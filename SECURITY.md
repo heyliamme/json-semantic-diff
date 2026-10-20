@@ -7,7 +7,7 @@ choose, are taken seriously.
 ## Reporting
 
 Please report vulnerabilities privately through
-[GitHub security advisories](https://github.com/heyliamme/json-semdiff/security/advisories/new),
+[GitHub security advisories](https://github.com/heyliamme/json-semantic-diff/security/advisories/new),
 not public issues. Include steps to reproduce. You should hear back within a week.
 
 ## Scope

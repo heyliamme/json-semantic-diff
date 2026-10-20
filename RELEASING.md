@@ -18,7 +18,7 @@ The workflow refuses to publish if the tag and `package.json` disagree.
 
 ## One-time setup
 
-0. **Public repository.** Create `heyliamme/json-semdiff` as a **public** repository and push `main`.
+0. **Public repository.** Create `heyliamme/json-semantic-diff` as a **public** repository and push `main`.
    The store pages load README images from it, and CI and the release workflow run there.
    Then Settings → Code security → enable **Private vulnerability reporting** (SECURITY.md and
    the issue templates link to its form).

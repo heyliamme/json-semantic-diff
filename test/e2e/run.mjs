@@ -16,7 +16,7 @@ const vsix = path.resolve(process.argv[2] || `${pkg.name}-${pkg.version}.vsix`);
 if (!existsSync(vsix)) throw new Error(`${vsix} not found: run npm run package first`);
 const shotsFor = process.env.E2E_SHOTS ? path.resolve(process.env.E2E_SHOTS) : undefined;
 
-const root = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'json-semdiff-e2e-')));
+const root = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'json-semantic-diff-e2e-')));
 const ws = path.join(root, 'workspace');
 const out = path.join(root, 'shots');
 mkdirSync(ws);

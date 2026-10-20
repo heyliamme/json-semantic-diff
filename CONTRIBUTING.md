@@ -12,8 +12,8 @@ expected and what you saw. The output of **Copy summary** helps.
 Node 22 or newer.
 
 ```bash
-git clone https://github.com/heyliamme/json-semdiff
-cd json-semdiff
+git clone https://github.com/heyliamme/json-semantic-diff
+cd json-semantic-diff
 npm install
 npm run watch        # rebuilds dist/ on change
 ```

@@ -8,8 +8,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/heyliamme/json-semdiff/blob/main/CHANGELOG.md">Changelog</a> ·
-  <a href="https://github.com/heyliamme/json-semdiff/blob/main/CONTRIBUTING.md">Contributing</a>
+  <a href="https://github.com/heyliamme/json-semantic-diff/blob/main/CHANGELOG.md">Changelog</a> ·
+  <a href="https://github.com/heyliamme/json-semantic-diff/blob/main/CONTRIBUTING.md">Contributing</a>
 </p>
 
 ![Two orders compared side by side: changed values are marked, an added and a removed item line up against blank space, and an item that moved shows where it was and where it went](images/overview-dark.png)

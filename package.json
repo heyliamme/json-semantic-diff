@@ -12,13 +12,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/heyliamme/json-semdiff"
+    "url": "https://github.com/heyliamme/json-semantic-diff"
   },
   "bugs": {
-    "url": "https://github.com/heyliamme/json-semdiff/issues"
+    "url": "https://github.com/heyliamme/json-semantic-diff/issues"
   },
-  "homepage": "https://github.com/heyliamme/json-semdiff#readme",
-  "qna": "https://github.com/heyliamme/json-semdiff/issues",
+  "homepage": "https://github.com/heyliamme/json-semantic-diff#readme",
+  "qna": "https://github.com/heyliamme/json-semantic-diff/issues",
   "pricing": "Free",
   "engines": {
     "vscode": "^1.90.0"
