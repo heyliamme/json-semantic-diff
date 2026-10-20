@@ -1,0 +1,21 @@
+{
+  "orderId": 90071992547409931,
+  "status": "pending",
+  "customer": { "name": "Mai Tran", "email": "mai@example.com", "tier": "silver" },
+  "total": 129.50,
+  "currency": "USD",
+  "items": [
+    { "id": "sku-100", "title": "Desk lamp", "qty": 1, "price": 39.5 },
+    { "id": "sku-200", "title": "Notebook, dotted", "qty": 3, "price": 6.0 },
+    { "id": "sku-300", "title": "Fountain pen", "qty": 1, "price": 72 }
+  ],
+  "tags": ["gift", "express"],
+  "shipping": {
+    "method": "express",
+    "address": { "line1": "12 Harbor Rd", "city": "Da Nang", "country": "VN", "postcode": "550000" },
+    "eta": "2026-10-24"
+  },
+  "payload": "{\"source\":\"web\",\"campaign\":\"autumn\",\"ab\":{\"variant\":\"A\"}}",
+  "audit": { "createdAt": "2026-10-20T08:00:00Z", "updatedAt": "2026-10-20T08:00:00Z" },
+  "notes": null
+}

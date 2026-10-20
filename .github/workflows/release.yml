@@ -1,0 +1,84 @@
+name: Release
+
+# Push a tag like v0.2.0 (matching package.json) to publish.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the tag matches package.json
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run package
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vsix
+          path: '*.vsix'
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Settings > Environments > release: add yourself as a required reviewer and keep the
+    # store tokens there, so a tag alone can't publish and only this job can read them.
+    environment: release
+    permissions:
+      contents: write
+      id-token: write # Microsoft Entra ID sign-in for the Marketplace (OIDC, no stored token)
+    # Whether each credential exists, as "true"/"false" (secrets can't appear in a step's `if`).
+    env:
+      HAS_ENTRA: ${{ vars.AZURE_CLIENT_ID != '' }}
+      HAS_VSCE: ${{ secrets.VSCE_PAT != '' }}
+      HAS_OVSX: ${{ secrets.OVSX_PAT != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      # vsce and ovsx come from the lockfile; nothing else runs with the tokens.
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: vsix
+      # --skip-duplicate: a re-run after a partial failure doesn't fail on the store already done.
+      - name: Sign in to Microsoft Entra ID
+        if: env.HAS_ENTRA == 'true'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Publish to the VS Code Marketplace (Entra ID)
+        if: env.HAS_ENTRA == 'true'
+        run: npx --no-install vsce publish --packagePath *.vsix --skip-duplicate --azure-credential
+      # Fallback: a personal access token. Global PATs stop working on 1 December 2026.
+      - name: Publish to the VS Code Marketplace (token)
+        if: env.HAS_ENTRA != 'true' && env.HAS_VSCE == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --no-install vsce publish --packagePath *.vsix --skip-duplicate
+      - name: Publish to Open VSX
+        if: env.HAS_OVSX == 'true'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --no-install ovsx publish *.vsix --skip-duplicate
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: '*.vsix'
+          generate_release_notes: true

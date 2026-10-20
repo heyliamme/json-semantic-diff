@@ -1,0 +1,23 @@
+name: Bug report
+description: A wrong result, a crash, or something that looks off
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: input
+    attributes:
+      label: The two documents
+      description: The smallest pair of JSON documents that shows the problem (redact anything private). The "Copy summary" button output helps too.
+      render: json
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: OS, VS Code (or other editor) and the extension version
+    validations:
+      required: true

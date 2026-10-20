@@ -1,0 +1,294 @@
+{
+  "name": "json-semantic-diff",
+  "displayName": "JSON Semantic Diff",
+  "description": "Compare two JSON documents by meaning, not by text: key order, formatting and number spelling don't matter, array items are matched by id, and changes line up side by side.",
+  "version": "0.1.0",
+  "publisher": "heyliam",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#10161f",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heyliamme/json-semdiff"
+  },
+  "bugs": {
+    "url": "https://github.com/heyliamme/json-semdiff/issues"
+  },
+  "homepage": "https://github.com/heyliamme/json-semdiff#readme",
+  "qna": "https://github.com/heyliamme/json-semdiff/issues",
+  "pricing": "Free",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "json",
+    "diff",
+    "compare",
+    "semantic diff",
+    "json diff",
+    "json compare",
+    "jsonc",
+    "json5",
+    "api response",
+    "side by side"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onWebviewPanel:jsonSemanticDiff"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "restrictedConfigurations": [
+        "jsonSemanticDiff.ignorePaths",
+        "jsonSemanticDiff.arrayMatchKeys",
+        "jsonSemanticDiff.ignoreArrayOrder",
+        "jsonSemanticDiff.parseNestedJson",
+        "jsonSemanticDiff.nullEqualsMissing"
+      ],
+      "description": "In Restricted Mode, comparison settings from the workspace are not applied, so a repository can't hide its own differences."
+    },
+    "virtualWorkspaces": true
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "jsonSemanticDiff.new",
+        "title": "New Empty Comparison",
+        "category": "JSON Semantic Diff"
+      },
+      {
+        "command": "jsonSemanticDiff.compareSelected",
+        "title": "Compare as JSON",
+        "category": "JSON Semantic Diff"
+      },
+      {
+        "command": "jsonSemanticDiff.selectForCompare",
+        "title": "Select for JSON Compare",
+        "category": "JSON Semantic Diff"
+      },
+      {
+        "command": "jsonSemanticDiff.compareWithSelected",
+        "title": "Compare as JSON with Selected",
+        "category": "JSON Semantic Diff"
+      },
+      {
+        "command": "jsonSemanticDiff.compareWithClipboard",
+        "title": "Compare with Clipboard",
+        "category": "JSON Semantic Diff"
+      },
+      {
+        "command": "jsonSemanticDiff.compareWith",
+        "title": "Compare with…",
+        "category": "JSON Semantic Diff"
+      },
+      {
+        "command": "jsonSemanticDiff.compareWithHead",
+        "title": "Compare with HEAD",
+        "category": "JSON Semantic Diff"
+      },
+      {
+        "command": "jsonSemanticDiff.fromDiffEditor",
+        "title": "Open Diff Semantically",
+        "category": "JSON Semantic Diff",
+        "icon": "$(json)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "jsonSemanticDiff.compareWith",
+        "key": "ctrl+k j",
+        "mac": "cmd+k j",
+        "when": "!terminalFocus && !isInDiffEditor"
+      },
+      {
+        "command": "jsonSemanticDiff.fromDiffEditor",
+        "key": "ctrl+k j",
+        "mac": "cmd+k j",
+        "when": "!terminalFocus && isInDiffEditor"
+      },
+      {
+        "command": "jsonSemanticDiff.compareWithClipboard",
+        "key": "ctrl+k shift+j",
+        "mac": "cmd+k shift+j",
+        "when": "!terminalFocus && !isInDiffEditor"
+      },
+      {
+        "command": "jsonSemanticDiff.new",
+        "key": "ctrl+k alt+j",
+        "mac": "cmd+k alt+j",
+        "when": "!terminalFocus"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "jsonSemanticDiff.editorContext",
+        "label": "JSON Semantic Diff"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "jsonSemanticDiff.compareSelected",
+          "when": "false"
+        },
+        {
+          "command": "jsonSemanticDiff.selectForCompare",
+          "when": "editorIsOpen && activeEditor != 'WebviewEditor'"
+        },
+        {
+          "command": "jsonSemanticDiff.compareWithSelected",
+          "when": "jsonSemanticDiff.hasSelection && editorIsOpen && activeEditor != 'WebviewEditor'"
+        },
+        {
+          "command": "jsonSemanticDiff.compareWithClipboard",
+          "when": "editorIsOpen && activeEditor != 'WebviewEditor'"
+        },
+        {
+          "command": "jsonSemanticDiff.compareWith",
+          "when": "editorIsOpen && activeEditor != 'WebviewEditor'"
+        },
+        {
+          "command": "jsonSemanticDiff.compareWithHead",
+          "when": "editorIsOpen && activeEditor != 'WebviewEditor' && resourceScheme == file"
+        },
+        {
+          "command": "jsonSemanticDiff.fromDiffEditor",
+          "when": "isInDiffEditor"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "jsonSemanticDiff.compareSelected",
+          "when": "listMultiSelection && !explorerResourceIsFolder && resourceExtname =~ /^\\.(json|jsonc|json5|jsonl|geojson|har|map)$/",
+          "group": "3_compare@30"
+        },
+        {
+          "command": "jsonSemanticDiff.selectForCompare",
+          "when": "!listMultiSelection && !explorerResourceIsFolder && resourceExtname =~ /^\\.(json|jsonc|json5|jsonl|geojson|har|map)$/",
+          "group": "3_compare@31"
+        },
+        {
+          "command": "jsonSemanticDiff.compareWithSelected",
+          "when": "!listMultiSelection && !explorerResourceIsFolder && jsonSemanticDiff.hasSelection",
+          "group": "3_compare@32"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "jsonSemanticDiff.editorContext",
+          "when": "editorLangId =~ /^(json|jsonc|json5|jsonl)$/ || resourceExtname =~ /^\\.(json|jsonc|json5|jsonl)$/ || (editorHasSelection && editorLangId =~ /^(plaintext|log|markdown)$/)",
+          "group": "3_compare@10"
+        }
+      ],
+      "jsonSemanticDiff.editorContext": [
+        {
+          "command": "jsonSemanticDiff.compareWithClipboard",
+          "group": "1@1"
+        },
+        {
+          "command": "jsonSemanticDiff.compareWith",
+          "group": "1@2"
+        },
+        {
+          "command": "jsonSemanticDiff.compareWithHead",
+          "when": "resourceScheme == file",
+          "group": "1@3"
+        },
+        {
+          "command": "jsonSemanticDiff.selectForCompare",
+          "group": "2@1"
+        },
+        {
+          "command": "jsonSemanticDiff.compareWithSelected",
+          "when": "jsonSemanticDiff.hasSelection",
+          "group": "2@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "jsonSemanticDiff.fromDiffEditor",
+          "when": "isInDiffEditor && (resourceLangId =~ /^(json|jsonc|json5)$/ || resourceExtname =~ /^\\.(json|jsonc|json5)$/)",
+          "group": "navigation@-10"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "JSON Semantic Diff",
+      "properties": {
+        "jsonSemanticDiff.arrayMatchKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "id",
+            "_id",
+            "uuid",
+            "key",
+            "name"
+          ],
+          "markdownDescription": "Properties that identify an item in an array of objects, tried in order. The first one that is present, a plain value and unique on both sides is used, so `[{\"id\": 2}, {\"id\": 1}]` is matched item by item instead of position by position."
+        },
+        "jsonSemanticDiff.ignoreArrayOrder": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Treat every array as a set: reordering items is not a change. Can also be switched per comparison."
+        },
+        "jsonSemanticDiff.parseNestedJson": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Compare strings that hold JSON, such as `\"{\\\"a\\\": 1}\"` in logs and API payloads, as the JSON inside them."
+        },
+        "jsonSemanticDiff.nullEqualsMissing": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Treat a property set to `null` the same as a missing property."
+        },
+        "jsonSemanticDiff.ignorePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Differences under these paths are shown dimmed and not counted. `$.meta.requestId` is anchored at the root; a bare name such as `updatedAt` matches at any depth; `*` or `[*]` matches one level and `**` any number, as in `$.items[*].etag`."
+        },
+        "jsonSemanticDiff.changesOnly": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Start with unchanged properties and items hidden."
+        },
+        "jsonSemanticDiff.foldUnchangedAfterLines": {
+          "type": "number",
+          "default": 40,
+          "minimum": 0,
+          "markdownDescription": "Unchanged objects and arrays longer than this many lines start folded. `0` folds every unchanged object and array."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node scripts/build.mjs && node --test test/*.test.mjs",
+    "package": "node scripts/build.mjs --prod && vsce package --no-dependencies",
+    "test:e2e": "npm run package && node test/e2e/run.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/vscode": "^1.90.0",
+    "@vscode/codicons": "0.0.36",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "ovsx": "^1.3.0",
+    "typescript": "^7.0.2"
+  }
+}

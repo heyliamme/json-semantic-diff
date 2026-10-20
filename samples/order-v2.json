@@ -1,0 +1,7 @@
+{"currency":"USD","orderId":90071992547409931,"status":"paid","total":1.295e2,
+"customer":{"email":"mai@example.com","name":"Mai Tran","tier":"gold"},
+"items":[{"id":"sku-300","title":"Fountain pen","qty":1,"price":72.0},{"id":"sku-100","title":"Desk lamp","qty":2,"price":39.5},{"id":"sku-400","title":"Ink cartridges","qty":2,"price":4.75}],
+"tags":["express","gift"],
+"shipping":{"method":"express","eta":"2026-10-23","address":{"city":"Da Nang","country":"VN","line1":"12 Harbor Road","postcode":"550000"}},
+"payload":"{\"campaign\":\"autumn\",\"source\":\"web\",\"ab\":{\"variant\":\"B\"}}",
+"audit":{"createdAt":"2026-10-20T08:00:00Z","updatedAt":"2026-10-20T09:12:44Z"}}

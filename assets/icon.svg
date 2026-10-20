@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#f3eee4"/>
+  <!-- braces -->
+  <g fill="none" stroke="#24304a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M72 52c-15 0-21 7-21 21v29c0 12-6 26-19 26 13 0 19 14 19 26v29c0 14 6 21 21 21"/>
+    <path d="M184 52c15 0 21 7 21 21v29c0 12 6 26 19 26-13 0-19 14-19 26v29c0 14-6 21-21 21"/>
+  </g>
+  <!-- one row matched in place, two that swapped places -->
+  <g stroke-width="11" stroke-linecap="round" fill="none">
+    <line x1="100" y1="88" x2="156" y2="88" stroke="#24304a"/>
+    <path d="M100 128 C128 128 128 168 156 168" stroke="#e8735a"/>
+    <path d="M100 168 C128 168 128 128 156 128" stroke="#2a9d8f"/>
+  </g>
+  <circle cx="98" cy="88" r="13" fill="#24304a"/>
+  <circle cx="158" cy="88" r="13" fill="#24304a"/>
+  <circle cx="98" cy="128" r="13" fill="#e8735a"/>
+  <circle cx="158" cy="168" r="13" fill="#e8735a"/>
+  <circle cx="98" cy="168" r="13" fill="#2a9d8f"/>
+  <circle cx="158" cy="128" r="13" fill="#2a9d8f"/>
+</svg>
