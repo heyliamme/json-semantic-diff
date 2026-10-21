@@ -144,6 +144,19 @@ button.tog[aria-pressed='true'] {
 .editors[hidden] { display: none; }
 body.nodiff .editors { flex: 1; height: auto; resize: none; }
 body.nodiff .body { flex: none; }
+.ed { position: relative; display: flex; min-width: 0; min-height: 0; }
+.ed textarea { flex: 1; min-width: 0; padding-right: 76px !important; }
+.ed .fmt {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  padding: 1px 8px;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+.ed .fmt:hover { opacity: 1; }
+.ed .fmt.shake { animation: shake 0.3s; }
+@keyframes shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
 .editors textarea {
   resize: none;
   border: none;

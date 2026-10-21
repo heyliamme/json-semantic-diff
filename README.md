@@ -57,7 +57,7 @@ another open file, a file on disk, or the clipboard.
 | Two files, one at a time | **Select for JSON Compare** on the first, **Compare as JSON with Selected** on the second |
 | Your working copy with the last commit | **Compare with HEAD** |
 | The two sides of a diff editor (Source Control, a pull request, Timeline) | <kbd>Ctrl</kbd>+<kbd>K</kbd> <kbd>J</kbd>, or the `{}` button in the editor title |
-| Two snippets you paste | <kbd>Ctrl</kbd>+<kbd>K</kbd> <kbd>Alt</kbd>+<kbd>J</kbd> (**New Empty Comparison**) |
+| Two snippets you paste | The `{×}` button in the editor title bar, or <kbd>Ctrl</kbd>+<kbd>K</kbd> <kbd>Alt</kbd>+<kbd>J</kbd> (**New Empty Comparison**). One-line JSON is laid out as you paste it. |
 
 All commands are under **JSON Semantic Diff** in the Command Palette. To change a
 shortcut, search for `jsonSemanticDiff` in **Keyboard Shortcuts**.
@@ -78,7 +78,8 @@ shortcut, search for `jsonSemanticDiff` in **Keyboard Shortcuts**.
   settings** keeps it for next time.
 - **Ignore array order** treats arrays as sets. **null = missing** treats `"a": null`
   as if `a` were absent.
-- **Edit** both sides in place to try something out, **Paste** to replace a side with
+- **Edit** both sides in place to try something out (**Format** lays a box out with
+  indentation, keeping key order), **Paste** to replace a side with
   the clipboard, **⇄** to swap sides.
 - **Text diff** opens both documents normalized (sorted keys, same layout) in VS Code's
   own diff editor.
@@ -100,6 +101,7 @@ The view follows the files: edit or save either one and the comparison updates.
 | `jsonSemanticDiff.ignorePaths` | `[]` | Paths to ignore, see below. |
 | `jsonSemanticDiff.changesOnly` | `false` | Start with unchanged content hidden. |
 | `jsonSemanticDiff.foldUnchangedAfterLines` | `40` | Unchanged objects and arrays longer than this start folded. |
+| `jsonSemanticDiff.showTitleButton` | `true` | Show the `{×}` button for a new empty comparison in the editor title bar. |
 
 ### Ignore paths
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- A `{×}` button in the editor title bar opens an empty comparison to paste into
+  (`jsonSemanticDiff.showTitleButton` hides it).
+- Pasting one-line JSON into the edit boxes lays it out with indentation; a **Format**
+  button does the same on demand, keeping key order. Escaped or wrapped JSON comes out
+  as the JSON inside.
+
 ## 0.1.0
 
 First release.

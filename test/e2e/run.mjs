@@ -429,6 +429,14 @@ try {
     await w(`(() => { for (const [id, v] of [['ed-left', '[1, 2, 3]'], ['ed-right', '[3, 1, 2]']]) { const t = document.getElementById(id); t.value = v; t.dispatchEvent(new Event('input')); } })()`);
     await until(`${W.stats}.includes('moved')`, 'diff');
     eq(await w(W.stats), '↕1 moved', 'stats');
+    // Pasting one-line JSON lays it out; the Format button does the same on demand.
+    await w(`(() => { const t = document.getElementById('ed-left'); t.value = '{"b":1,"a":[1,2]}'; t.dispatchEvent(new Event('paste')); })()`);
+    await until(`document.getElementById('ed-left').value === '{\\n  "b": 1,\\n  "a": [\\n    1,\\n    2\\n  ]\\n}\\n'`, 'laid out on paste');
+    await w(`(() => { const t = document.getElementById('ed-right'); t.value = "{a: 1, 'b': [true,]}"; t.dispatchEvent(new Event('input')); })()`);
+    await w(W.click('[data-format="right"]'));
+    eq(await w(`document.getElementById('ed-right').value`), '{\n  "a": 1,\n  "b": [\n    true\n  ]\n}\n', 'formatted right');
+    await w(`(() => { const t = document.getElementById('ed-left'); t.value = '[1, 2, 3]'; t.dispatchEvent(new Event('input')); })()`);
+    await sleep(400);
   });
 
   await step('Change… picks the clipboard for a side', async () => {
@@ -461,6 +469,16 @@ try {
     await sleep(600);
     await shotOfEditor(path.join(shotsFor, 'list-light.png'));
   }
+
+  await step('the title bar button opens an empty comparison', async () => {
+    await openFile('config.json');
+    const btn = `document.querySelector('.editor-group-container.active .editor-actions [aria-label^="New Empty Comparison"]')`;
+    ok(await vs.eval(`!!${btn}`), 'button in the editor title');
+    await vs.clickElement(btn);
+    await waitFor(async () => (await vs.editorTabs()).some((t) => t.startsWith('Left ↔ Right')), { what: 'an empty comparison' });
+    ctx = await vs.webview('Left');
+    ok(await w(`!document.getElementById('editors').hidden`), 'paste boxes open');
+  });
 
   await step('the comparison comes back after Reload Window', async () => {
     await closeAll();

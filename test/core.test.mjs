@@ -369,3 +369,17 @@ describe('council round 2', () => {
   });
 });
 
+
+describe('prettyText', () => {
+  it('lays out one-line JSON, keeping key order and number spelling', () => {
+    assert.equal(c.prettyText(P('{"b":1.50,"a":[1,{"x":null}],"e":{},"f":[]}')), '{\n  "b": 1.50,\n  "a": [\n    1,\n    {\n      "x": null\n    }\n  ],\n  "e": {},\n  "f": []\n}\n');
+  });
+  it('turns lenient input into valid JSON', () => {
+    const out = c.prettyText(P("{a: .5, 'b': True, /* c */ d: [1,],}"));
+    assert.deepEqual(JSON.parse(out), { a: 0.5, b: true, d: [1] });
+  });
+  it('lays out what a loose read finds inside a string or a log line', () => {
+    const r = c.parseLoose(String.raw`INFO got "{\"a\":1}" in 3ms`);
+    assert.equal(c.prettyText(r.value), '{\n  "a": 1\n}\n');
+  });
+});

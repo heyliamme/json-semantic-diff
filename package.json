@@ -2,7 +2,7 @@
   "name": "json-semantic-diff",
   "displayName": "JSON Semantic Diff",
   "description": "Compare two JSON documents by meaning, not by text: key order, formatting and number spelling don't matter, array items are matched by id, and changes line up side by side.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "heyliam",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -62,7 +62,11 @@
       {
         "command": "jsonSemanticDiff.new",
         "title": "New Empty Comparison",
-        "category": "JSON Semantic Diff"
+        "category": "JSON Semantic Diff",
+        "icon": {
+          "light": "media/title-light.svg",
+          "dark": "media/title-dark.svg"
+        }
       },
       {
         "command": "jsonSemanticDiff.compareSelected",
@@ -98,7 +102,10 @@
         "command": "jsonSemanticDiff.fromDiffEditor",
         "title": "Open Diff Semantically",
         "category": "JSON Semantic Diff",
-        "icon": "$(json)"
+        "icon": {
+          "light": "media/title-light.svg",
+          "dark": "media/title-dark.svg"
+        }
       }
     ],
     "keybindings": [
@@ -217,6 +224,11 @@
           "command": "jsonSemanticDiff.fromDiffEditor",
           "when": "isInDiffEditor && (resourceLangId =~ /^(json|jsonc|json5)$/ || resourceExtname =~ /^\\.(json|jsonc|json5)$/)",
           "group": "navigation@-10"
+        },
+        {
+          "command": "jsonSemanticDiff.new",
+          "when": "!isInDiffEditor && config.jsonSemanticDiff.showTitleButton",
+          "group": "navigation@100"
         }
       ]
     },
@@ -270,6 +282,11 @@
           "default": 40,
           "minimum": 0,
           "markdownDescription": "Unchanged objects and arrays longer than this many lines start folded. `0` folds every unchanged object and array."
+        },
+        "jsonSemanticDiff.showTitleButton": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a button in the editor title bar that opens an empty comparison to paste two documents into."
         }
       }
     }

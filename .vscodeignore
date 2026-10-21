@@ -5,6 +5,8 @@
 !dist/codicon.css
 !dist/codicon.ttf
 !media/icon.png
+!media/title-light.svg
+!media/title-dark.svg
 !package.json
 !README.md
 !CHANGELOG.md

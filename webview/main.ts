@@ -1,4 +1,4 @@
-import { changes, compilePattern, diff, formatPath, parseLoose, type Change, type DNode, type JV, type ParseResult, type Seg } from '../src/core';
+import { changes, compilePattern, diff, formatPath, parseLoose, prettyText, type Change, type DNode, type JV, type ParseResult, type Seg } from '../src/core';
 import type { FromWebview, Side, SideData, ToWebview, ViewOptions } from '../src/protocol';
 import { Builder, esc, inPrintOrder, strSpan, type Row } from './render';
 
@@ -77,8 +77,14 @@ app.innerHTML = `
 </header>
 <div class="ignores" id="ignores" hidden></div>
 <div class="editors" id="editors" hidden>
-  <textarea id="ed-left" spellcheck="false" aria-label="Left document" placeholder="Paste or type JSON (left)"></textarea>
-  <textarea id="ed-right" spellcheck="false" aria-label="Right document" placeholder="Paste or type JSON (right)"></textarea>
+  <div class="ed">
+    <textarea id="ed-left" spellcheck="false" aria-label="Left document" placeholder="Paste or type JSON (left)"></textarea>
+    <button class="fmt" data-format="left" title="Lay out with indentation, keeping key order. One-line JSON is laid out as you paste it.">Format</button>
+  </div>
+  <div class="ed">
+    <textarea id="ed-right" spellcheck="false" aria-label="Right document" placeholder="Paste or type JSON (right)"></textarea>
+    <button class="fmt" data-format="right" title="Lay out with indentation, keeping key order. One-line JSON is laid out as you paste it.">Format</button>
+  </div>
 </div>
 <div class="body">
   <div class="diff">
@@ -635,6 +641,14 @@ document.addEventListener('click', (e) => {
   if (btn.dataset.paste) post({ type: 'paste', side: btn.dataset.paste as Side });
   else if (btn.dataset.pick) post({ type: 'pick', side: btn.dataset.pick as Side });
   else if (btn.dataset.go) go(+btn.dataset.go);
+  else if (btn.dataset.format) {
+    const side = btn.dataset.format as Side;
+    if (!formatSide(side)) {
+      $('announce').textContent = `The ${side} side isn't valid JSON yet, so it can't be laid out.`;
+      btn.classList.add('shake');
+      setTimeout(() => btn.classList.remove('shake'), 400);
+    }
+  }
   else if (btn.dataset.more) {
     listLimit += LIST_PAGE;
     renderList();
@@ -711,19 +725,48 @@ function setEditing(on: boolean) {
   if (on) $<HTMLTextAreaElement>('ed-left').focus();
 }
 
+/** Takes what's in a side's box as that side's document. */
+function applyEdit(side: Side) {
+  if (!sides) return;
+  const s = sides[side];
+  s.text = $<HTMLTextAreaElement>(`ed-${side}`).value;
+  s.parsed = parseLoose(s.text);
+  s.edited = true;
+  recompute();
+}
+
+/**
+ * Lays out a side's box with indentation, reading it as loosely as the comparison does
+ * (so an escaped or wrapped document comes out as the JSON inside). False if it doesn't parse.
+ */
+function formatSide(side: Side): boolean {
+  const ed = $<HTMLTextAreaElement>(`ed-${side}`);
+  const res = parseLoose(ed.value);
+  if (!res.value) return false;
+  const text = prettyText(res.value);
+  if (text !== ed.value) {
+    ed.value = text;
+    applyEdit(side);
+  }
+  return true;
+}
+
 for (const side of SIDES) {
   let timer: ReturnType<typeof setTimeout>;
   const ed = $<HTMLTextAreaElement>(`ed-${side}`);
   ed.addEventListener('input', () => {
     clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (!sides) return;
-      const s = sides[side];
-      s.text = ed.value;
-      s.parsed = parseLoose(ed.value);
-      s.edited = true;
-      recompute();
-    }, 200);
+    timer = setTimeout(() => applyEdit(side), 200);
+  });
+  // Pasting a one-line document (an API response, a log payload) lays it out at once.
+  ed.addEventListener('paste', () => {
+    setTimeout(() => {
+      const v = ed.value.trim();
+      if (v.length > 2 && !v.includes('\n')) {
+        clearTimeout(timer);
+        formatSide(side);
+      }
+    }, 0);
   });
 }
 
