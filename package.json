@@ -2,7 +2,7 @@
   "name": "json-semantic-diff",
   "displayName": "JSON Semantic Diff",
   "description": "Compare two JSON documents by meaning, not by text: key order, formatting and number spelling don't matter, array items are matched by id, and changes line up side by side.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "heyliam",
   "license": "MIT",
   "icon": "media/icon.png",

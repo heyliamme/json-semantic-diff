@@ -105,6 +105,51 @@ button.tog[aria-pressed='true'] {
 .actions button .t { margin-left: 4px; }
 .actions { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
 
+.find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--vscode-editorWidget-background, transparent);
+}
+.find[hidden] { display: none; }
+#find-q {
+  flex: 1 1 260px;
+  min-width: 160px;
+  font: inherit;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-input-foreground, inherit);
+  background: var(--vscode-input-background, transparent);
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 3px;
+  padding: 3px 6px;
+}
+#find-q:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+#find-q.bad { border-color: var(--vscode-inputValidation-errorBorder, #be1100); }
+button.tog.small { padding: 1px 7px; font-family: var(--vscode-editor-font-family, monospace); }
+button.tog.small[aria-pressed='true']::before { content: none; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; background: transparent; color: var(--vscode-foreground); padding: 1px 9px; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed='true'] {
+  background: var(--vscode-inputOption-activeBackground, rgba(0, 120, 212, 0.25));
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+  font-weight: 600;
+}
+#find-count { min-width: 70px; }
+mark.hit {
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  color: inherit;
+  border-radius: 2px;
+}
+.tx.hitcur mark.hit, .tx.hitrow.hitcur {
+  background: var(--vscode-editor-findMatchBackground, #9e6a03);
+  outline: 1px solid var(--vscode-editor-findMatchBorder, var(--vscode-focusBorder));
+}
+.tx.hitrow { box-shadow: inset 3px 0 var(--vscode-editor-findMatchBorder, var(--vscode-focusBorder)); background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.2)); }
+body.vscode-high-contrast mark.hit, body.vscode-high-contrast-light mark.hit { outline: 1px dotted var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
 .ignores {
   display: flex;
   flex-wrap: wrap;

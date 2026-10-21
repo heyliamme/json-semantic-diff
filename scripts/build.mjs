@@ -13,6 +13,7 @@ const builds = [
   // The diff engine and the row builder on their own, for the tests.
   { ...common, entryPoints: ['src/core/index.ts'], outfile: 'dist/core.js', platform: 'node', format: 'cjs', target: 'node18', sourcemap: false },
   { ...common, entryPoints: ['webview/render.ts'], outfile: 'dist/render.js', platform: 'node', format: 'cjs', target: 'node18', sourcemap: false },
+  { ...common, entryPoints: ['webview/search.ts'], outfile: 'dist/search.js', platform: 'node', format: 'cjs', target: 'node18', sourcemap: false },
 ];
 
 const copyCss = () => {

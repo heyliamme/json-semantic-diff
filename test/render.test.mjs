@@ -202,3 +202,39 @@ describe('rows', () => {
     assert.equal(gaps.length, 4); // {, gap, "c", }
   });
 });
+
+describe('find', () => {
+  const { search } = require('../dist/search.js');
+  const a = '{"user":{"id":7,"name":"Mai"},"items":[{"id":"sku-1","price":10},{"id":"sku-2","price":null}],"note":"Price list"}';
+  const b = '{"user":{"id":7,"name":"Mai Tran"},"items":[{"id":"sku-1","price":12},{"id":"sku-3","price":5}],"note":"price list"}';
+  const root = c.diff(c.parse(a).value, c.parse(b).value);
+  const q = (text, extra = {}) => search(root, { text, caseSensitive: false, regex: false, scope: 'both', ...extra });
+  const where = (f) => f.hits.map((h) => `${h.side}:${h.node.path}`);
+  it('finds keys and values on both sides, case-insensitively by default', () => {
+    // A removed or added item prints as one block, so a match inside it is one hit on it.
+    assert.deepEqual(where(q('price')), ['l:$.items[id="sku-1"].price', 'r:$.items[id="sku-1"].price', 'l:$.items[id="sku-2"]', 'r:$.items[id="sku-3"]', 'l:$.note', 'r:$.note']);
+    assert.deepEqual(where(q('Price', { caseSensitive: true })), ['l:$.note']);
+  });
+  it('limits to one side', () => {
+    assert.deepEqual(where(q('mai', { scope: 'r' })), ['r:$.user.name']);
+    assert.deepEqual(where(q('null', { scope: 'l' })), ['l:$.items[id="sku-2"]']);
+  });
+  it('regular expressions, and a clear error for a bad one', () => {
+    assert.deepEqual(where(q('^sku-[23]$', { regex: true })), ['l:$.items[id="sku-2"]', 'r:$.items[id="sku-3"]']);
+    assert.equal(q('(', { regex: true }).error, 'Not a valid regular expression');
+  });
+  it('path queries find every value at a path, including unchanged and folded ones', () => {
+    const f = q('$.items[*].price');
+    assert.ok(f.pathMode);
+    assert.equal(f.hits.length, 4);
+    assert.deepEqual(where(q('$..id', { scope: 'l' })), ['l:$.user.id', 'l:$.items[id="sku-1"].id', 'l:$.items[id="sku-2"]']);
+    assert.equal(q('$[').error, 'Not a valid path');
+  });
+  it('a revealed path stays on screen under folding and "changes only"', () => {
+    const r2 = c.diff(c.parse('{"a":{"x":1,"y":2,"z":3},"b":1}').value, c.parse('{"a":{"x":1,"y":2,"z":3},"b":2}').value);
+    for (const extra of [{ changesOnly: true }, { foldThreshold: 0 }]) {
+      assert.ok(!rows(r2, [], extra).some((r) => r.path === '$.a.y'), JSON.stringify(extra));
+      assert.ok(rows(r2, [], { ...extra, reveal: '$.a.y' }).some((r) => r.path === '$.a.y'), JSON.stringify(extra));
+    }
+  });
+});

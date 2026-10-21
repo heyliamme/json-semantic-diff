@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Find (Ctrl+F / Cmd+F) in the comparison: keys and values, both documents or one,
+  match case and regular expressions, including folded and hidden parts. A query that
+  starts with `$` is a path (`$.items[*].price`, `$..id`) and steps through every value
+  there.
+
 ## 0.2.0
 
 - A `{×}` button in the editor title bar opens an empty comparison to paste into

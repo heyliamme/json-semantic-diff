@@ -68,6 +68,12 @@ shortcut, search for `jsonSemanticDiff` in **Keyboard Shortcuts**.
 
 - **Step through changes** with the arrows, <kbd>F7</kbd> / <kbd>Shift</kbd>+<kbd>F7</kbd>,
   or <kbd>N</kbd> / <kbd>P</kbd>. **Changes** lists them all with their paths.
+- **Find** with <kbd>Ctrl</kbd>+<kbd>F</kbd> (<kbd>Cmd</kbd>+<kbd>F</kbd>): matches keys and values
+  in both documents or just one (**Both / Left / Right**), with match case and regular
+  expressions. It also finds what is folded or hidden by **Changes only**. Type a path
+  such as `$.items[*].price` or `$..id` to step through every value at that path, handy
+  for checking one field across a document. <kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd>
+  or <kbd>F3</kbd> move between matches, <kbd>Esc</kbd> closes.
 - **Click a line** to see its path and copy it. Items of an array matched by a key are
   named by it, `$.containers[name="app"].image`; others by their index on the right.
   **Double-click** to jump to that line in the file.

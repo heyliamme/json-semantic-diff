@@ -40,7 +40,11 @@ export interface RenderState {
   changesOnly: boolean;
   foldThreshold: number;
   changeIndex: Map<DNode, number>;
+  /** A path that must be on screen (a search result): its ancestors don't fold or hide. */
+  reveal?: string;
 }
+
+const under = (path: string, parent: string) => path === parent || path.startsWith(parent + '.') || path.startsWith(parent + '[');
 
 type Container = Extract<JV, { t: 'o' | 'a' }>;
 type Half = 'l' | 'r';
@@ -163,6 +167,7 @@ export class Builder {
   }
 
   private folded(n: DNode, d: number): boolean {
+    if (this.s.reveal !== undefined && under(this.s.reveal, n.path) && this.s.reveal !== n.path) return false;
     if (this.s.collapsed.has(n.path)) return true;
     if (d === 0 || n.st !== 'eq' || this.s.expanded.has(n.path)) return false;
     return lineCount(n.l!) > this.s.foldThreshold;
@@ -222,7 +227,7 @@ export class Builder {
         if (t.half) this.half(t.kid, d + 1, t.half, t.half === 'l' ? i < lastL : i < lastR, true);
         else this.node(t.kid, d + 1, i < lastL, i < lastR);
       };
-      const quiet = (t: Tok) => !t.half && t.kid.st === 'eq' && !t.kid.moved;
+      const quiet = (t: Tok) => !t.half && t.kid.st === 'eq' && !t.kid.moved && !(this.s.reveal !== undefined && under(this.s.reveal, t.kid.path));
       for (let i = 0; i < toks.length; ) {
         if (this.s.changesOnly && quiet(toks[i])) {
           let j = i;

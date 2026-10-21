@@ -1,6 +1,7 @@
 import { changes, compilePattern, diff, formatPath, parseLoose, prettyText, type Change, type DNode, type JV, type ParseResult, type Seg } from '../src/core';
 import type { FromWebview, Side, SideData, ToWebview, ViewOptions } from '../src/protocol';
 import { Builder, esc, inPrintOrder, strSpan, type Row } from './render';
+import { highlight, search, type Found, type Query, type Scope } from './search';
 
 declare function acquireVsCodeApi(): { postMessage(m: FromWebview): void; setState(s: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -44,6 +45,15 @@ let selectedRow = -1;
 let selectedPath: string | undefined;
 let editing = false;
 let showList = false;
+// Find
+const query: Query = { text: '', caseSensitive: false, regex: false, scope: 'both' };
+let found: Found = { hits: [], pathMode: false, capped: false };
+let hitIdx = -1;
+/** For each node with a match, the sides it matches on. */
+let hitSides = new Map<DNode, Set<'l' | 'r'>>();
+/** The current match's path, kept on screen even inside folded or hidden parts. */
+let revealPath: string | undefined;
+
 /** Toggles flipped in this view; settings changes leave them alone. */
 const flipped = new Set<Toggle>();
 const view = { collapsed: new Set<string>(), expanded: new Set<string>(), gapsOpen: new Set<string>() };
@@ -68,6 +78,7 @@ app.innerHTML = `
     ${toggle('changesOnly', 'Changes only', 'Hide unchanged properties and items')}
   </div>
   <div class="actions">
+    <button id="openFind" class="icon" title="Find in keys, values or a path (Ctrl+F)" aria-label="Find">${icon('search')}</button>
     <button id="toggleList" aria-pressed="false" title="List every change">${icon('list-flat')}<span class="t">Changes</span></button>
     <button id="edit" aria-pressed="false" title="Edit both sides here (the files are not changed)">${icon('edit')}<span class="t">Edit</span></button>
     <button id="swap" class="icon" title="Swap sides" aria-label="Swap sides">${icon('arrow-swap')}</button>
@@ -75,6 +86,18 @@ app.innerHTML = `
     <button id="copy" class="icon" title="Copy the list of changes as Markdown" aria-label="Copy summary">${icon('copy')}</button>
   </div>
 </header>
+<div class="find" id="find" hidden role="search">
+  <input id="find-q" type="text" spellcheck="false" autocomplete="off" placeholder="Find in keys and values, or a path: $.items[*].id" aria-label="Find in keys and values, or a path">
+  <button class="tog small" id="find-case" aria-pressed="false" title="Match case">Aa</button>
+  <button class="tog small" id="find-re" aria-pressed="false" title="Regular expression">.*</button>
+  <div class="seg" role="group" aria-label="Search in">
+    <button data-scope="both" aria-pressed="true" title="Search both documents">Both</button><button data-scope="l" aria-pressed="false" title="Search the left document only">Left</button><button data-scope="r" aria-pressed="false" title="Search the right document only">Right</button>
+  </div>
+  <span id="find-count" class="pos" aria-live="polite"></span>
+  <button id="find-prev" class="icon" title="Previous match (Shift+Enter, Shift+F3)" aria-label="Previous match">${icon('arrow-up')}</button>
+  <button id="find-next" class="icon" title="Next match (Enter, F3)" aria-label="Next match">${icon('arrow-down')}</button>
+  <button id="find-close" class="icon" title="Close (Escape)" aria-label="Close find">${icon('close')}</button>
+</div>
 <div class="ignores" id="ignores" hidden></div>
 <div class="editors" id="editors" hidden>
   <div class="ed">
@@ -137,6 +160,7 @@ function recompute() {
   }
   ignored = root ? countIgnored(root) : 0;
   if (cur >= list.length) cur = list.length - 1;
+  if (query.text) runSearch(false);
   render();
 }
 
@@ -153,7 +177,7 @@ function render() {
   const anchor = takeAnchor();
   const changeIndex = new Map<DNode, number>();
   list.forEach((c, i) => changeIndex.set(c.node, i));
-  const b = new Builder({ ...view, changesOnly: opts.changesOnly, foldThreshold: opts.foldThreshold, changeIndex });
+  const b = new Builder({ ...view, changesOnly: opts.changesOnly, foldThreshold: opts.foldThreshold, changeIndex, reveal: revealPath });
   b.node(root, 0, false, false);
   rows = b.rows;
   rowsEl.style.setProperty('--lnw', `${Math.max(3, String(b.maxLine).length) + 1}ch`);
@@ -233,6 +257,7 @@ function fill(k: number) {
   el.innerHTML = h;
   el.style.height = '';
   filled.add(k);
+  if (hitSides.size) markHits(el, k);
   if (cur >= 0 && chRow[cur] !== undefined && Math.floor(chRow[cur] / CHUNK) === k) markCurrent(false);
   if (selectedRow >= 0 && Math.floor(selectedRow / CHUNK) === k) el.querySelector(`.row[data-i="${selectedRow}"]`)?.classList.add('sel');
 }
@@ -772,6 +797,16 @@ for (const side of SIDES) {
 
 document.addEventListener('keydown', (e) => {
   const t = e.target as HTMLElement;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    openFind();
+    return;
+  }
+  if (e.key === 'F3' && found.hits.length) {
+    e.preventDefault();
+    goHit(e.shiftKey ? hitIdx - 1 : hitIdx + 1);
+    return;
+  }
   const typing = t.tagName === 'TEXTAREA' || (t instanceof HTMLInputElement && t.type !== 'checkbox' && t.type !== 'button');
   if (e.key === 'F7') {
     e.preventDefault();
@@ -781,6 +816,150 @@ document.addEventListener('keydown', (e) => {
     else if (e.key === 'p' || e.key === 'k') go(cur < 0 ? -1 : cur - 1);
   }
 });
+
+// --- find ------------------------------------------------------------------------
+
+function runSearch(jump: boolean) {
+  found = root ? search(root, query) : { hits: [], pathMode: false, capped: false };
+  hitSides = new Map();
+  for (const h of found.hits) {
+    let set = hitSides.get(h.node);
+    if (!set) hitSides.set(h.node, (set = new Set()));
+    set.add(h.side);
+  }
+  if (hitIdx >= found.hits.length) hitIdx = found.hits.length - 1;
+  if (jump) hitIdx = found.hits.length ? 0 : -1;
+  renderFindCount();
+}
+
+function renderFindCount() {
+  const el = $('find-count');
+  $('find-q').classList.toggle('bad', !!found.error || (!!query.text.trim() && !found.hits.length));
+  if (found.error) el.textContent = found.error;
+  else if (!query.text.trim()) el.textContent = '';
+  else if (!found.hits.length) el.textContent = 'No results';
+  else el.textContent = `${hitIdx >= 0 ? hitIdx + 1 : '?'} of ${found.hits.length}${found.capped ? '+' : ''}${found.pathMode ? ' (path)' : ''}`;
+  $<HTMLButtonElement>('find-prev').disabled = $<HTMLButtonElement>('find-next').disabled = !found.hits.length;
+}
+
+/** Highlights the matches in one block of rows. */
+function markHits(blockEl: HTMLElement, k: number) {
+  const cur = found.hits[hitIdx];
+  for (let j = k * CHUNK; j < Math.min((k + 1) * CHUNK, rows.length); j++) {
+    const r = rows[j];
+    const sidesHit = r.node && hitSides.get(r.node);
+    if (!sidesHit) continue;
+    const rowNode = blockEl.querySelector(`.row[data-i="${j}"]`);
+    for (const side of sidesHit) {
+      const tx = rowNode?.querySelector(`.c.${side} .tx`);
+      if (!tx) continue;
+      if (found.pathMode) tx.classList.add('hitrow');
+      else if (found.pattern) highlight(tx, found.pattern);
+      if (cur && cur.node === r.node && cur.side === side) tx.classList.add('hitcur');
+    }
+  }
+}
+
+/** Re-applies highlights to the blocks that are built. */
+function refreshHits() {
+  rowsEl.querySelectorAll('.hitcur').forEach((e) => e.classList.remove('hitcur'));
+  for (const k of [...filled]) {
+    filled.delete(k);
+    fill(k);
+  }
+}
+
+function rowOfHit(h: { node: DNode; side: 'l' | 'r' }) {
+  return rows.findIndex((r) => r.node === h.node && !!r[h.side]);
+}
+
+function goHit(i: number) {
+  if (!found.hits.length) return;
+  hitIdx = (i + found.hits.length) % found.hits.length;
+  const h = found.hits[hitIdx];
+  let at = rowOfHit(h);
+  if (at < 0 || revealPath !== h.node.path) {
+    // Possibly folded or hidden: render with this path kept on screen.
+    revealPath = h.node.path;
+    render();
+    at = rowOfHit(h);
+  } else refreshHits();
+  renderFindCount();
+  if (at < 0) return;
+  const el = rowEl(at);
+  el?.scrollIntoView({ block: 'center' });
+  select(at, false);
+  $('announce').textContent = `Match ${hitIdx + 1} of ${found.hits.length}: ${h.node.path} on the ${h.side === 'l' ? 'left' : 'right'}`;
+}
+
+function openFind() {
+  $('find').hidden = false;
+  const q = $<HTMLInputElement>('find-q');
+  q.focus();
+  q.select();
+}
+
+function closeFind() {
+  $('find').hidden = true;
+  query.text = '';
+  $<HTMLInputElement>('find-q').value = '';
+  found = { hits: [], pathMode: false, capped: false };
+  hitSides = new Map();
+  hitIdx = -1;
+  revealPath = undefined;
+  renderFindCount();
+  refreshHits();
+  rowsEl.querySelectorAll('.hitrow').forEach((e) => e.classList.remove('hitrow'));
+  rowsEl.focus();
+}
+
+{
+  let timer: ReturnType<typeof setTimeout>;
+  const q = $<HTMLInputElement>('find-q');
+  q.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      query.text = q.value;
+      runSearch(true);
+      if (hitIdx >= 0) goHit(hitIdx);
+      else refreshHits();
+    }, 150);
+  });
+  q.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      goHit(e.shiftKey ? hitIdx - 1 : hitIdx + 1);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeFind();
+    }
+  });
+  const toggleOpt = (id: string, key: 'caseSensitive' | 'regex') => {
+    $(id).onclick = () => {
+      query[key] = !query[key];
+      $(id).setAttribute('aria-pressed', String(query[key]));
+      $(id).classList.toggle('on', query[key]);
+      runSearch(true);
+      if (hitIdx >= 0) goHit(hitIdx);
+      else refreshHits();
+    };
+  };
+  toggleOpt('find-case', 'caseSensitive');
+  toggleOpt('find-re', 'regex');
+  document.querySelectorAll<HTMLButtonElement>('[data-scope]').forEach((b) => {
+    b.onclick = () => {
+      query.scope = b.dataset.scope as Scope;
+      document.querySelectorAll('[data-scope]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      runSearch(true);
+      if (hitIdx >= 0) goHit(hitIdx);
+      else refreshHits();
+    };
+  });
+  $('find-next').onclick = () => goHit(hitIdx + 1);
+  $('find-prev').onclick = () => goHit(hitIdx < 0 ? -1 : hitIdx - 1);
+  $('find-close').onclick = () => closeFind();
+  $('openFind').onclick = () => openFind();
+}
 
 /** An ignore pattern for a path; with `every`, indices become [*] (the same property in every item). */
 function patternOf(segs: readonly Seg[], every: boolean): string {

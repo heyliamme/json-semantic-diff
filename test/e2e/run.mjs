@@ -242,6 +242,30 @@ try {
     ok((await w(`document.getElementById('announce').textContent`)).startsWith('Change '), 'announced');
   });
 
+  await step('Ctrl+F finds keys and values, even in hidden parts, per side and by path', async () => {
+    const count = `document.getElementById('find-count').textContent`;
+    const type = (text) => w(`(() => { const q = document.getElementById('find-q'); q.value = ${JSON.stringify(text)}; q.dispatchEvent(new Event('input')); })()`);
+    await w(W.check('changesOnly', true));
+    ok(!(await w(`!!${W.rowWithText('Desk lamp')}`)), 'unchanged title hidden by Changes only');
+    await w(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))`);
+    ok(await w(`!document.getElementById('find').hidden && document.activeElement.id === 'find-q'`), 'find bar open and focused');
+    await type('desk lamp');
+    await until(`${count} === '1 of 2'`, 'two matches (left and right)');
+    ok(await w(`!!document.querySelector('.tx.hitcur mark.hit')`), 'current match highlighted');
+    ok(await w(`${W.rowWithText('Desk lamp')}.closest('.row').classList.contains('sel')`), 'hidden line revealed and selected');
+    await w(`document.getElementById('find-q').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    eq(await w(count), '2 of 2', 'next');
+    await w(W.click('[data-scope="r"]'));
+    await until(`${count} === '1 of 1'`, 'right side only');
+    await w(W.click('[data-scope="both"]'));
+    await type('$.items[*].price');
+    await until(`${count}.endsWith('(path)')`, 'path mode');
+    eq(await w(count), '1 of 6 (path)', 'every price: three items on each side');
+    await w(`document.getElementById('find-q').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    ok(await w(`document.getElementById('find').hidden && !document.querySelector('mark.hit, .hitrow')`), 'closed and cleared');
+    await w(W.check('changesOnly', false));
+  });
+
   await step('ignore array order removes the moves', async () => {
     await w(W.check('ignoreArrayOrder', true));
     eq(await w(W.stats), '~7 changed +1 added −2 removed', 'stats');
