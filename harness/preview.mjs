@@ -8,8 +8,9 @@
 // next=N (step to the Nth change), select=N (click row N), edit=1.
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [leftFile = 'samples/order-v1.json', rightFile = 'samples/order-v2.json'] = process.argv.slice(2);
 const read = (f) => readFileSync(path.resolve(f), 'utf8');
 
