@@ -2,8 +2,10 @@ import { changes, compilePattern, diff, formatPath, parseLoose, prettyText, type
 import type { FromWebview, Side, SideData, ToWebview, ViewOptions } from '../src/protocol';
 import { Builder, esc, inPrintOrder, strSpan, type Row } from './render';
 import { highlight, search, type Found, type Query, type Scope } from './search';
+import { diffText, lineLabel, textRows, type TextDoc } from './textrows';
+import { wordDiff } from '../src/core';
 
-declare function acquireVsCodeApi(): { postMessage(m: FromWebview): void; setState(s: unknown): void };
+declare function acquireVsCodeApi(): { postMessage(m: FromWebview): void; setState(s: unknown): void; getState(): unknown };
 const vscode = acquireVsCodeApi();
 const post = (m: FromWebview) => vscode.postMessage(m);
 
@@ -45,6 +47,13 @@ let selectedRow = -1;
 let selectedPath: string | undefined;
 let editing = false;
 let showList = false;
+// Compare as JSON (by meaning) or as plain text (line by line).
+let mode: 'json' | 'text' = 'json';
+let ignoreWs = false;
+let textDocs: { left: TextDoc; right: TextDoc } | undefined;
+/** Why text mode was chosen for the user, shown until they switch themselves. */
+let modeNote: string | undefined;
+
 // Find
 const query: Query = { text: '', caseSensitive: false, regex: false, scope: 'both' };
 let found: Found = { hits: [], pathMode: false, capped: false };
@@ -59,8 +68,8 @@ const flipped = new Set<Toggle>();
 const view = { collapsed: new Set<string>(), expanded: new Set<string>(), gapsOpen: new Set<string>() };
 
 const icon = (name: string) => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
-const toggle = (opt: Toggle, label: string, title: string) =>
-  `<button class="tog" data-opt="${opt}" aria-pressed="false" title="${title}">${label}</button>`;
+const toggle = (opt: Toggle, label: string, title: string, cls = '') =>
+  `<button class="tog ${cls}" data-opt="${opt}" aria-pressed="false" title="${title}">${label}</button>`;
 
 const app = document.getElementById('app')!;
 app.innerHTML = `
@@ -71,10 +80,14 @@ app.innerHTML = `
     <span id="pos" class="pos"></span>
     <button id="next" class="icon" title="Next change (F7 or N)" aria-label="Next change">${icon('arrow-down')}</button>
   </div>
+  <div class="seg" id="mode" role="group" aria-label="Compare as">
+    <button data-mode="json" aria-pressed="true" title="Compare as JSON: by meaning, ignoring key order and layout">JSON</button><button data-mode="text" aria-pressed="false" title="Compare as plain text, line by line, marking changed words">Text</button>
+  </div>
   <div class="toggles" role="group" aria-label="Comparison options">
-    ${toggle('ignoreArrayOrder', 'Ignore array order', 'Treat arrays as sets: reordered items are not a change')}
-    ${toggle('parseNestedJson', 'JSON in strings', 'Compare strings that contain JSON as the JSON inside them')}
-    ${toggle('nullEqualsMissing', 'null = missing', 'A property set to null equals a missing property')}
+    ${toggle('ignoreArrayOrder', 'Ignore array order', 'Treat arrays as sets: reordered items are not a change', 'json-only')}
+    ${toggle('parseNestedJson', 'JSON in strings', 'Compare strings that contain JSON as the JSON inside them', 'json-only')}
+    ${toggle('nullEqualsMissing', 'null = missing', 'A property set to null equals a missing property', 'json-only')}
+    <button class="tog text-only" id="ignoreWs" aria-pressed="false" title="Lines that differ only in spaces and indentation are equal">Ignore whitespace</button>
     ${toggle('changesOnly', 'Changes only', 'Hide unchanged properties and items')}
   </div>
   <div class="actions">
@@ -117,7 +130,14 @@ app.innerHTML = `
   <aside id="list" hidden aria-label="Changes"></aside>
 </div>
 <footer id="status"></footer>
-<div id="announce" class="sr-only" aria-live="polite"></div>`;
+<div id="announce" class="sr-only" aria-live="polite"></div>
+<dialog class="dialog" id="strdlg" aria-labelledby="strdlg-title">
+  <div class="dialog-box">
+    <div class="dialog-head"><b id="strdlg-title"></b><button class="icon" id="strdlg-close" title="Close (Escape)" aria-label="Close">${icon('close')}</button></div>
+    <div class="dialog-side"><div class="lbl" id="strdlg-ln"></div><pre id="strdlg-l" tabindex="0" aria-labelledby="strdlg-ln"></pre></div>
+    <div class="dialog-side"><div class="lbl" id="strdlg-rn"></div><pre id="strdlg-r" tabindex="0" aria-labelledby="strdlg-rn"></pre></div>
+  </div>
+</dialog>`;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const rowsEl = $('rows');
@@ -138,7 +158,7 @@ function saveState() {
   // Text typed or edited here is kept as is (up to a size); the host reads back the rest.
   const keep = (s: SideState) =>
     s.edited ? { label: s.data.label, detail: s.data.detail, text: s.text.length <= 5_000_000 ? s.text : '' } : s.data.restore;
-  vscode.setState({ left: keep(sides.left), right: keep(sides.right) });
+  vscode.setState({ left: keep(sides.left), right: keep(sides.right), mode, ignoreWs });
 }
 
 function recompute() {
@@ -148,10 +168,24 @@ function recompute() {
   const r = sides.right.parsed.value;
   failure = undefined;
   try {
-    root = l && r ? diff(l, r, { ...opts, ignorePaths: [...opts.ignorePaths, ...sessionIgnores] }) : undefined;
-    list = root ? changes(root) : [];
-    // Only moves print out of tree order; skip the second pass otherwise.
-    if (root && list.some((c) => c.kind === 'moved')) list = inPrintOrder(root, list);
+    if (mode === 'text') {
+      const t = diffText(sides.left.text, sides.right.text, { ignoreWhitespace: ignoreWs });
+      textDocs = { left: t.left, right: t.right };
+      root = t.root;
+      list = changes(t.root);
+      if (list.some((c) => c.kind === 'moved')) {
+        const order = textRows(t.root, t.left, t.right, { changesOnly: false, gapsOpen: new Set(), changeIndex: new Map(list.map((c, i) => [c.node, i])) })
+          .rows.filter((x) => x.ch !== undefined)
+          .map((x) => x.ch!);
+        if (order.length === list.length) list = order.map((i) => list[i]);
+      }
+    } else {
+      textDocs = undefined;
+      root = l && r ? diff(l, r, { ...opts, ignorePaths: [...opts.ignorePaths, ...sessionIgnores] }) : undefined;
+      list = root ? changes(root) : [];
+      // Only moves print out of tree order; skip the second pass otherwise.
+      if (root && list.some((c) => c.kind === 'moved')) list = inPrintOrder(root, list);
+    }
     listLimit = LIST_PAGE;
   } catch (e) {
     root = undefined;
@@ -177,10 +211,18 @@ function render() {
   const anchor = takeAnchor();
   const changeIndex = new Map<DNode, number>();
   list.forEach((c, i) => changeIndex.set(c.node, i));
-  const b = new Builder({ ...view, changesOnly: opts.changesOnly, foldThreshold: opts.foldThreshold, changeIndex, reveal: revealPath });
-  b.node(root, 0, false, false);
-  rows = b.rows;
-  rowsEl.style.setProperty('--lnw', `${Math.max(3, String(b.maxLine).length) + 1}ch`);
+  let maxLine: number;
+  if (mode === 'text' && textDocs) {
+    const t = textRows(root, textDocs.left, textDocs.right, { changesOnly: opts.changesOnly, changeIndex, gapsOpen: view.gapsOpen, reveal: revealPath });
+    rows = t.rows;
+    maxLine = t.maxLine;
+  } else {
+    const b = new Builder({ ...view, changesOnly: opts.changesOnly, foldThreshold: opts.foldThreshold, changeIndex, reveal: revealPath });
+    b.node(root, 0, false, false);
+    rows = b.rows;
+    maxLine = b.maxLine;
+  }
+  rowsEl.style.setProperty('--lnw', `${Math.max(3, String(maxLine).length) + 1}ch`);
   chRow = [];
   rows.forEach((r, i) => {
     if (r.ch !== undefined) chRow[r.ch] = i;
@@ -316,7 +358,9 @@ function renderHeads() {
     const name = side === 'left' ? 'left' : 'right';
     const warn = s.parsed.warnings.length ? `<span class="warn" title="${esc(s.parsed.warnings.join('\n'))}">&#9888; ${s.parsed.warnings.length}</span>` : '';
     const edited = s.edited ? ' <span class="edited">edited</span>' : '';
-    const notes = (s.parsed.notes ?? []).map((n) => `<span class="note" title="${esc(n)}">${esc(n)}</span>`).join('');
+    const shownNotes = mode === 'text' ? [] : (s.parsed.notes ?? []);
+    const notes = shownNotes.map((n) => `<span class="note" title="${esc(n)}">${esc(n)}</span>`).join('') +
+      (modeNote && side === 'left' ? `<span class="note mode-note" title="Switch back with JSON in the toolbar">${esc(modeNote)}</span>` : '');
     const detail = s.data.detail && s.data.detail !== s.data.label ? s.data.detail : '';
     return `<div class="head ${side === 'left' ? 'l' : 'r'}">
       <div class="name"><span class="label" title="${esc(s.data.detail ?? s.data.label)}">${esc(s.data.label)}</span>${edited}${notes}${warn}</div>
@@ -338,7 +382,7 @@ function renderStats() {
   const n = count();
   const hidden = ignored ? `<span class="ignored" title="Differences under ignored paths, shown dimmed">${ignored} ignored</span>` : '';
   if (!list.length) {
-    el.innerHTML = ignored ? `<span class="same partial">No differences counted</span>${hidden}` : `<span class="same">&#10003; No semantic differences</span>`;
+    el.innerHTML = ignored ? `<span class="same partial">No differences counted</span>${hidden}` : `<span class="same">&#10003; ${mode === 'text' ? 'No differences' : 'No semantic differences'}</span>`;
   } else {
     const stat = (k: keyof typeof n, sym: string, word: string) =>
       n[k] ? `<span class="stat ${k}" title="${n[k]} ${word}">${sym}${n[k]} <span class="w">${word}</span></span>` : '';
@@ -395,7 +439,7 @@ function renderProblems() {
       .map((t, i) => `${String(from + i + 1).padStart(5)} | ${t}`)
       .join('\n');
     const caret = ' '.repeat(8 + e.col - 1) + '^';
-    return `<div class="problem bad"><b>${name}: line ${e.line}, column ${e.col}.</b> ${esc(e.message)} <button class="link" data-goto-error="${side}">Show in the editor</button><pre>${esc(snippet)}\n${caret}</pre></div>`;
+    return `<div class="problem bad"><b>${name}: line ${e.line}, column ${e.col}.</b> ${esc(e.message)} <button class="link" data-goto-error="${side}">Show in the editor</button> · <button class="link" data-act="asText" title="Compare the two sides as plain text, line by line">Compare as text</button><pre>${esc(snippet)}\n${caret}</pre></div>`;
   };
   rowsEl.innerHTML = `<div class="problems">${box('left')}${box('right')}</div>`;
   renderList();
@@ -410,7 +454,8 @@ function countIgnored(n: DNode): number {
 
 function count() {
   const n = { chg: 0, add: 0, del: 0, moved: 0 };
-  for (const c of list) for (const k of [c.kind, ...(c.also ?? [])]) n[k === 'wrap' ? 'chg' : k]++;
+  // One per change in the list, so the counts add up to the navigator's total.
+  for (const c of list) n[c.kind === 'wrap' ? 'chg' : c.kind]++;
   return n;
 }
 
@@ -456,7 +501,26 @@ function shortValue(v: JV | undefined, max: number): string {
 const KIND_WORD = { chg: 'changed', add: 'added', del: 'removed', moved: 'moved', wrap: 'changed' };
 
 /** One line about a change, for the list, the summary and screen readers. */
+/** Where a change is: its JSON path, or its line in text mode. */
+function place(n: DNode | undefined, path: string): string {
+  return mode === 'text' && n && n !== root ? lineLabel(n) : path;
+}
+
+const clip = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + '…' : s);
+
 function describe(c: Change, max = 60): string {
+  if (mode === 'text' && textDocs) {
+    const n = c.node;
+    const L = n.li !== undefined ? textDocs.left.raw[n.li] : '';
+    const R = n.ri !== undefined ? textDocs.right.raw[n.ri] : '';
+    // Lines that differ only in spacing are shown quoted, so the difference is visible.
+    const [a, b] = L.trim() === R.trim() ? [JSON.stringify(L), JSON.stringify(R)] : [L.trim(), R.trim()];
+    const edited = c.kind === 'chg' || c.also?.includes('chg');
+    if (edited) return `${c.kind === 'moved' ? 'moved and changed: ' : ''}${clip(a, max)} → ${clip(b, max)}`;
+    if (c.kind === 'add') return clip(b, max);
+    if (c.kind === 'del') return clip(a, max);
+    return `moved: ${clip(a, max)}`;
+  }
   if (c.also?.length) return [c.kind, ...c.also].map((k) => describe({ ...c, kind: k, also: undefined }, max)).join('; ');
   const n = c.node;
   if (c.kind === 'chg') return previewPair(n.l, n.r, max).join(' → ');
@@ -483,7 +547,7 @@ function renderList() {
       .slice(0, listLimit)
       .map(
       (c, i) =>
-        `<button class="item ${c.kind}${i === cur ? ' cur' : ''}" data-go="${i}" aria-label="${KIND_WORD[c.kind]} ${esc(c.path)}: ${esc(describe(c))}"><span class="sym" aria-hidden="true">${sym[c.kind]}</span><span class="path">${esc(c.path)}</span><span class="val">${esc(describe(c))}</span></button>`,
+        `<button class="item ${c.kind}${i === cur ? ' cur' : ''}" data-go="${i}" aria-label="${KIND_WORD[c.kind]} ${esc(place(c.node, c.path))}: ${esc(describe(c))}"><span class="sym" aria-hidden="true">${sym[c.kind]}</span><span class="path">${esc(place(c.node, c.path))}</span><span class="val">${esc(describe(c))}</span></button>`,
     )
       .join('') + (list.length > listLimit ? `<button class="more" data-more="1">Show ${Math.min(LIST_PAGE, list.length - listLimit)} more of ${list.length - listLimit}</button>` : '');
 }
@@ -512,7 +576,7 @@ function go(i: number) {
   }
   markListCurrent();
   const c = list[cur];
-  $('announce').textContent = `Change ${cur + 1} of ${list.length}, ${KIND_WORD[c.kind]}: ${c.path}, ${describe(c)}`;
+  $('announce').textContent = `Change ${cur + 1} of ${list.length}, ${KIND_WORD[c.kind]}: ${place(c.node, c.path)}, ${describe(c)}`;
 }
 
 function markCurrent(scroll: boolean) {
@@ -571,12 +635,18 @@ function select(i: number, scroll = true) {
     rowsEl.setAttribute('aria-activedescendant', el.id);
     if (scroll) el.scrollIntoView({ block: 'nearest' });
   }
+  const strs = stringsOf(r);
+  const compareBtn = strs ? `<button data-act="strings" title="Both values in full, one above the other, with the differences marked">Compare strings</button>` : '';
+  if (mode === 'text') {
+    status.innerHTML = r.gap ? '' : `<code class="path">${esc(place(r.node, r.path))}</code><button data-act="copyLine">Copy line</button>${compareBtn}`;
+    return;
+  }
   const segs = r.node?.segs ?? [];
   const exact = patternOf(segs, false);
   const every = patternOf(segs, true);
   const canIgnore = r.path !== '$' && !r.gap;
   status.innerHTML =
-    `<code class="path">${esc(r.path)}</code><button data-act="copyPath">Copy path</button>` +
+    `<code class="path">${esc(r.path)}</code><button data-act="copyPath">Copy path</button>${compareBtn}` +
     (canIgnore ? `<button data-act="ignore" data-pattern="${esc(exact)}" title="Ignore differences under ${esc(exact)}">Ignore this path</button>` : '') +
     (canIgnore && every !== exact ? `<button data-act="ignore" data-pattern="${esc(every)}" title="Ignore differences under ${esc(every)}">Ignore in every item</button>` : '');
 }
@@ -694,6 +764,14 @@ document.addEventListener('click', (e) => {
     const at = lines.slice(0, e.line - 1).reduce((n, l) => n + l.length + 1, 0) + e.col - 1;
     ta.focus();
     ta.setSelectionRange(at, Math.min(at + 1, ta.value.length));
+  } else if (btn.dataset.act === 'asText') {
+    setMode('text');
+  } else if (btn.dataset.act === 'strings' && rows[selectedRow]) {
+    openStrings(rows[selectedRow]);
+  } else if (btn.dataset.act === 'copyLine' && rows[selectedRow] && textDocs) {
+    const n = rows[selectedRow].node!;
+    const text = n.ri !== undefined ? textDocs.right.raw[n.ri] : textDocs.left.raw[n.li!];
+    post({ type: 'copy', text, what: 'line' });
   } else if (btn.dataset.act === 'copyPath' && rows[selectedRow]) {
     post({ type: 'copy', text: rows[selectedRow].path, what: 'path' });
   } else if (btn.dataset.act === 'ignore' && btn.dataset.pattern) {
@@ -721,7 +799,7 @@ $('swap').onclick = () => {
   post({ type: 'swap' });
   recompute();
 };
-$('textDiff').onclick = () => sides && opts && post({ type: 'textDiff', left: sides.left.text, right: sides.right.text, options: opts });
+$('textDiff').onclick = () => sides && opts && post({ type: 'textDiff', left: sides.left.text, right: sides.right.text, options: opts, raw: mode === 'text' });
 $('copy').onclick = () => sides && root && post({ type: 'copy', text: summary(), what: `${list.length} change${list.length === 1 ? '' : 's'}` });
 
 document.querySelectorAll<HTMLButtonElement>('[data-opt]').forEach((btn) => {
@@ -797,6 +875,8 @@ for (const side of SIDES) {
 
 document.addEventListener('keydown', (e) => {
   const t = e.target as HTMLElement;
+  // While the dialog is open, keys belong to it (Escape is handled by the dialog itself).
+  if (dialogOpen()) return;
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f') {
     e.preventDefault();
     openFind();
@@ -817,10 +897,98 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// --- compare strings & mode -------------------------------------------------------
+
+/** The two whole strings behind a changed line or value, if it is one. */
+function stringsOf(r: Row): [string, string] | undefined {
+  const n = r.node;
+  if (!n || r.gap || n.st !== 'chg') return undefined;
+  let a: string | undefined;
+  let b: string | undefined;
+  if (mode === 'text' && textDocs) {
+    if (n.li === undefined || n.ri === undefined) return undefined;
+    a = textDocs.left.raw[n.li];
+    b = textDocs.right.raw[n.ri];
+  } else if (n.l?.t === 's' && n.r?.t === 's') {
+    a = n.l.v;
+    b = n.r.v;
+  }
+  if (a === undefined || b === undefined) return undefined;
+  return a.length > 40 || b.length > 40 || /\n/.test(a + b) ? [a, b] : undefined;
+}
+
+function openStrings(r: Row) {
+  const strs = stringsOf(r);
+  if (!strs) return;
+  const [lp, rp] = wordDiff(strs[0], strs[1]);
+  // Marks are announced too, not only coloured.
+  const html = (ps: typeof lp) => ps.map((p) => (p.changed ? `<mark><span class="sr-only">changed: </span>${esc(p.text)}</mark>` : esc(p.text))).join('');
+  $('strdlg-title').textContent = place(r.node, r.path);
+  $('strdlg-ln').textContent = sides?.left.data.label ?? 'Left';
+  $('strdlg-rn').textContent = sides?.right.data.label ?? 'Right';
+  $('strdlg-l').innerHTML = html(lp);
+  $('strdlg-r').innerHTML = html(rp);
+  // A native modal dialog: focus stays inside, the rest of the view is inert, Escape closes.
+  $<HTMLDialogElement>('strdlg').showModal();
+  $('strdlg-close').focus();
+}
+
+const dialogOpen = () => $<HTMLDialogElement>('strdlg').open;
+
+function closeStrings() {
+  if (dialogOpen()) $<HTMLDialogElement>('strdlg').close();
+}
+
+$('strdlg-close').onclick = closeStrings;
+$('strdlg').addEventListener('close', () => rowsEl.focus());
+$('strdlg').addEventListener('click', (e) => {
+  if (e.target === $('strdlg')) closeStrings();
+});
+
+/** Words that depend on the mode: placeholders, tooltips, hints. */
+function applyModeWords() {
+  const text = mode === 'text';
+  const set = (id: string, attr: string, json: string, plain: string) => $(id).setAttribute(attr, text ? plain : json);
+  set('ed-left', 'placeholder', 'Paste or type JSON (left)', 'Paste or type text (left)');
+  set('ed-right', 'placeholder', 'Paste or type JSON (right)', 'Paste or type text (right)');
+  set('find-q', 'placeholder', 'Find in keys and values, or a path: $.items[*].id', 'Find in the text');
+  set('find-q', 'aria-label', 'Find in keys and values, or a path', 'Find in the text');
+  set('openFind', 'title', 'Find in keys, values or a path (Ctrl+F)', 'Find in the text (Ctrl+F)');
+  set('textDiff', 'title', 'Open both sides, normalized (sorted keys, same layout), in the text diff editor', 'Open both texts as they are in the text diff editor');
+  set('textDiff', 'aria-label', 'Open as normalized text diff', 'Open in the text diff editor');
+  document.querySelector('[data-opt="changesOnly"]')!.setAttribute('title', text ? 'Hide unchanged lines (keeps 2 lines around each change)' : 'Hide unchanged properties and items');
+  document.body.dataset.mode = mode;
+}
+
+function setMode(m: 'json' | 'text') {
+  if (mode === m) return;
+  mode = m;
+  modeNote = undefined;
+  document.body.classList.toggle('mode-text', m === 'text');
+  applyModeWords();
+  document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.mode === m)));
+  view.collapsed.clear();
+  view.gapsOpen.clear();
+  clearSelection();
+  cur = -1;
+  revealPath = undefined;
+  recompute();
+}
+
+document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => (b.onclick = () => setMode(b.dataset.mode as 'json' | 'text')));
+$('ignoreWs').onclick = () => {
+  ignoreWs = !ignoreWs;
+  $('ignoreWs').setAttribute('aria-pressed', String(ignoreWs));
+  $('ignoreWs').classList.toggle('on', ignoreWs);
+  recompute();
+};
+
 // --- find ------------------------------------------------------------------------
 
 function runSearch(jump: boolean) {
-  found = root ? search(root, query) : { hits: [], pathMode: false, capped: false };
+  // In text mode, search the lines as written (Ignore whitespace compares a normalized copy).
+  const lineText = mode === 'text' && textDocs ? (n: DNode, side: 'l' | 'r') => (side === 'l' ? (n.li !== undefined ? textDocs!.left.raw[n.li] : undefined) : n.ri !== undefined ? textDocs!.right.raw[n.ri] : undefined) : undefined;
+  found = root ? search(root, query, mode === 'json', lineText) : { hits: [], pathMode: false, capped: false };
   hitSides = new Map();
   for (const h of found.hits) {
     let set = hitSides.get(h.node);
@@ -889,7 +1057,7 @@ function goHit(i: number) {
   const el = rowEl(at);
   el?.scrollIntoView({ block: 'center' });
   select(at, false);
-  $('announce').textContent = `Match ${hitIdx + 1} of ${found.hits.length}: ${h.node.path} on the ${h.side === 'l' ? 'left' : 'right'}`;
+  $('announce').textContent = `Match ${hitIdx + 1} of ${found.hits.length}: ${place(h.node, h.node.path)} on the ${h.side === 'l' ? 'left' : 'right'}`;
 }
 
 function openFind() {
@@ -970,7 +1138,21 @@ function summary(): string {
   const n = count();
   const counts = [n.chg && `${n.chg} changed`, n.add && `${n.add} added`, n.del && `${n.del} removed`, n.moved && `${n.moved} moved`].filter(Boolean).join(', ');
   const md = (s: string) => '`' + s.replace(/`/g, "'").replace(/[\r\n]+/g, ' ') + '`';
-  const head = `${md(sides!.left.data.label)} ↔ ${md(sides!.right.data.label)}: ${counts || 'no semantic differences'}${ignored ? ` (${ignored} ignored)` : ''}`;
+  const head = `${md(sides!.left.data.label)} ↔ ${md(sides!.right.data.label)}: ${counts || (mode === 'text' ? 'no differences' : 'no semantic differences')}${ignored ? ` (${ignored} ignored)` : ''}`;
+  if (mode === 'text' && textDocs) {
+    const lines = list.map((c) => {
+      const n = c.node;
+      const L = n.li !== undefined ? textDocs!.left.raw[n.li] : '';
+      const R = n.ri !== undefined ? textDocs!.right.raw[n.ri] : '';
+      const where = place(n, c.path);
+      const edited = c.kind === 'chg' || c.also?.includes('chg');
+      if (edited) return `- ${where}: ${c.kind === 'moved' ? 'moved and changed, ' : ''}${md(L)} → ${md(R)}`;
+      if (c.kind === 'add') return `- ${where}: added ${md(R)}`;
+      if (c.kind === 'del') return `- ${where}: removed ${md(L)}`;
+      return `- ${where}: moved ${md(L)}`;
+    });
+    return [head, '', ...lines].join('\n') + '\n';
+  }
   const lines = list.map((c) => {
     const nd = c.node;
     if (c.kind === 'chg') {
@@ -999,13 +1181,36 @@ window.addEventListener('message', (e: MessageEvent<ToWebview>) => {
   const m = e.data;
   if (m.type === 'init') {
     opts = m.options;
+    const st = vscode.getState() as { mode?: 'json' | 'text'; ignoreWs?: boolean } | undefined;
     setSide('left', m.left);
     setSide('right', m.right);
+    if (st?.ignoreWs) {
+      ignoreWs = true;
+      $('ignoreWs').setAttribute('aria-pressed', 'true');
+      $('ignoreWs').classList.add('on');
+    }
+    // Text mode: as left last time, or when a side that isn't JSON doesn't parse as JSON
+    // (release notes, .env, logs). A broken .json file stays in JSON mode to show its error.
+    const notJson = (side: SideState) => !side.parsed.value && side.text.trim() !== '' && !side.data.json;
+    const auto = st?.mode === undefined && (notJson(sides!.left) || notJson(sides!.right));
+    if (st?.mode === 'text' || auto) {
+      mode = 'text';
+      if (auto) modeNote = 'Not JSON: compared as text';
+      document.body.classList.add('mode-text');
+      document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.mode === 'text')));
+    }
+    applyModeWords();
     syncToggles();
     if (!m.left.text.trim() && !m.right.text.trim()) setEditing(true);
     recompute();
   } else if (m.type === 'side') {
     setSide(m.side, m.data);
+    const s2 = sides![m.side];
+    if (mode === 'json' && !s2.parsed.value && s2.text.trim() && !s2.data.json) {
+      setMode('text');
+      modeNote = 'Not JSON: compared as text';
+      return renderHeads();
+    }
     recompute();
   } else if (m.type === 'options') {
     // Keep the toggles the user flipped here; take everything else from settings.

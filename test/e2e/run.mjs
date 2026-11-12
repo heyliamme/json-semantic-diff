@@ -23,6 +23,8 @@ mkdirSync(ws);
 mkdirSync(out);
 for (const f of ['order-v1.json', 'order-v2.json']) copyFileSync(path.join('samples', f), path.join(ws, f));
 writeFileSync(path.join(ws, 'config.json'), JSON.stringify({ name: 'service', port: 8080, features: ['a', 'b'], limits: { rps: 100 } }, null, 2) + '\n');
+writeFileSync(path.join(ws, 'notes-a.txt'), 'Release 2.4\n- Faster startup\n- Dark theme\n');
+writeFileSync(path.join(ws, 'notes-b.txt'), 'Release 2.5\n- Faster startup on cold boot\n- Dark theme\n');
 writeFileSync(path.join(root, 'gitconfig'), '[user]\n\tname = Test\n\temail = test@example.com\n[init]\n\tdefaultBranch = main\n');
 process.env.GIT_CONFIG_GLOBAL = path.join(root, 'gitconfig');
 const git = (...a) => execFileSync('git', a, { cwd: ws, encoding: 'utf8' });
@@ -493,6 +495,58 @@ try {
     await sleep(600);
     await shotOfEditor(path.join(shotsFor, 'list-light.png'));
   }
+
+  await step('long strings compare in full; plain text compares line by line', async () => {
+    await vs.showTab('Left ↔');
+    ctx = await vs.webview('Left');
+    const set = (id, v) => w(`(() => { const t = document.getElementById('${id}'); t.value = ${JSON.stringify(v)}; t.dispatchEvent(new Event('input')); })()`);
+    await w(`document.getElementById('editors').hidden || document.getElementById('edit').click()`);
+    if (await w(`document.getElementById('editors').hidden`)) await w(W.click('#edit'));
+    await set('ed-left', '{"callback": "https://api.example.com/v2/webhooks/payments/notify?tenant=acme&region=eu-west-1"}');
+    await set('ed-right', '{"callback": "https://api.example.com/v2/webhooks/payments/notify?tenant=acme&region=eu-west-2"}');
+    await until(`${W.stats} === '~1 changed'`, 'one changed string');
+    await w(`${W.rowWithText('callback')}.querySelector('.c.r').click()`);
+    await w(W.click('footer [data-act="strings"]'));
+    ok(await w(`!document.getElementById('strdlg').hidden`), 'dialog open');
+    eq(await w(`[...document.querySelectorAll('#strdlg-r mark')].map((m) => m.textContent.replace('changed: ', ''))`), ['2'], 'only the differing character marked');
+    ok(await w(`document.getElementById('strdlg').open && document.activeElement.id === 'strdlg-close'`), 'modal, focus inside');
+    const before = await w(`document.querySelector('footer .path').textContent`);
+    await w(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }))`);
+    eq(await w(`document.querySelector('footer .path').textContent`), before, 'keys do not reach the view behind');
+    await w(W.click('#strdlg-close'));
+    ok(await w(`!document.getElementById('strdlg').open`), 'closed');
+
+    // Not JSON: the error offers text mode.
+    await set('ed-left', 'Dear team,\nthe deploy is at 5pm.\nThanks');
+    await set('ed-right', 'Dear team,\nthe deploy is at 6pm today.\nThanks\nLiam');
+    await until(`!!document.querySelector('[data-act="asText"]')`, 'compare-as-text offer');
+    await w(W.click('[data-act="asText"]'));
+    await until(`${W.stats} === '~1 changed +1 added'`, 'text diff');
+    ok(await w(`document.body.classList.contains('mode-text') && document.querySelector('[data-mode="text"]').getAttribute('aria-pressed') === 'true'`), 'text mode on');
+    eq(await w(`[...document.querySelectorAll('#rows .row.k-chg .c.r mark')].map((m) => m.textContent)`), ['6pm today'], 'changed words marked as one run');
+    await w(W.click('#toggleList'));
+    ok(await w(`document.querySelector('#list .item .path').textContent === 'line 2'`), 'changes listed by line');
+    await w(W.click('#toggleList'));
+    await w(W.click('[data-mode="json"]'));
+    ok(await w(`!!document.querySelector('.problem.bad')`), 'back to JSON shows the error again');
+    await w(W.click('[data-mode="text"]'));
+    await set('ed-left', '[1, 2, 3]');
+    await set('ed-right', '[1, 2, 3]');
+    await w(W.click('[data-mode="json"]'));
+  });
+
+  await step('files that are not JSON open in Text by themselves', async () => {
+    await closeAll();
+    await openFile('notes-b.txt');
+    await openFile('notes-a.txt');
+    await chord('j');
+    await vs.pickQuickItem('notes-b.txt');
+    ctx = await vs.webview('notes-b.txt');
+    await until(`document.body.classList.contains('mode-text')`, 'text mode');
+    eq(await w(W.stats), '~2 changed', 'two changed lines');
+    ok(await w(`document.querySelector('.mode-note')?.textContent === 'Not JSON: compared as text'`), 'says why');
+    ok(await w(`!document.querySelector('.problem.bad')`), 'no parse errors shown');
+  });
 
   await step('the title bar button opens an empty comparison', async () => {
     await openFile('config.json');

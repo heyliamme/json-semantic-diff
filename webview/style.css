@@ -312,8 +312,8 @@ body.nodiff .body { flex: none; }
 .k-mv .c:not(.fill) { background: var(--row-mv); }
 .k-in .ln { box-shadow: inset -2px 0 var(--mod); }
 .k-ign .tx { opacity: 0.55; }
-.k-chg .c.l mark { background: var(--txt-del); color: inherit; border-radius: 2px; }
-.k-chg .c.r mark { background: var(--txt-add); color: inherit; border-radius: 2px; }
+.k-chg .c.l mark, .k-del .c.l mark { background: var(--txt-del); color: inherit; border-radius: 2px; }
+.k-chg .c.r mark, .k-add .c.r mark { background: var(--txt-add); color: inherit; border-radius: 2px; }
 
 .row.cur .c:not(.fill) { box-shadow: inset 0 1px var(--vscode-focusBorder), inset 0 -1px var(--vscode-focusBorder); }
 #rows:focus-visible .row.sel .c:not(.fill) { outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
@@ -451,6 +451,12 @@ footer {
 }
 body.nodiff footer:empty::before { content: none; }
 footer:empty::before { content: 'Click a line to see its path · Double-click to open it in the file · F7 / Shift+F7 or N / P to step through changes'; color: var(--muted); }
+body.mode-text footer:empty::before { content: 'Click a line to select it · Double-click to open it in the file · F7 / Shift+F7 or N / P to step through changes'; }
+.note.mode-note { border-color: var(--vscode-focusBorder); color: var(--vscode-foreground); }
+/* The JSON / Text switch: the pressed half gets a tick and, in High Contrast, an outline. */
+#mode button[aria-pressed='true']::before { content: '\2713\00a0'; }
+body.vscode-high-contrast #mode button[aria-pressed='true'],
+body.vscode-high-contrast-light #mode button[aria-pressed='true'] { outline: 2px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -2px; }
 footer { flex-wrap: wrap; }
 footer .path { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; max-height: 3.4em; overflow: auto; min-width: 0; flex: 1 1 12em; }
 footer button { padding: 0 8px; }
@@ -482,3 +488,42 @@ footer button { padding: 0 8px; }
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Compare as JSON or as text: each mode shows only its own options. */
+body.mode-text .json-only,
+body:not(.mode-text) .text-only { display: none; }
+
+/* Two long strings in full, one above the other. */
+dialog.dialog {
+  padding: 0;
+  border: none;
+  background: transparent;
+  width: min(960px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  color: inherit;
+}
+dialog.dialog::backdrop { background: color-mix(in srgb, var(--vscode-editor-background, #000) 60%, transparent); }
+.dialog-box {
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-editorWidget-border, var(--border));
+  border-radius: 6px;
+  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+}
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: var(--vscode-editor-font-family, monospace); }
+.dialog-side { padding: 8px 12px 12px; }
+.dialog-side + .dialog-side { border-top: 1px dashed var(--border); }
+.dialog-side .lbl { color: var(--muted); font-size: 0.9em; margin-bottom: 4px; }
+.dialog-side pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: 1.5;
+}
+#strdlg-l mark { background: var(--txt-del); color: inherit; border-radius: 2px; }
+#strdlg-r mark { background: var(--txt-add); color: inherit; border-radius: 2px; }
+#mode { margin-right: 4px; }
+

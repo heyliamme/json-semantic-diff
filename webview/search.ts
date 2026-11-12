@@ -53,7 +53,8 @@ function scalarText(v: JV): string | undefined {
   }
 }
 
-export function search(root: DNode, q: Query): Found {
+/** `lineText`: in text mode, a line as written, rather than the copy that was compared. */
+export function search(root: DNode, q: Query, paths = true, lineText?: (n: DNode, side: 'l' | 'r') => string | undefined): Found {
   const none: Found = { hits: [], pathMode: false, capped: false };
   const text = q.text;
   if (!text.trim()) return none;
@@ -62,7 +63,7 @@ export function search(root: DNode, q: Query): Found {
   let capped = false;
 
   // A path pattern: $.a.b, $.items[*].price, $..id
-  if (text.trim().startsWith('$')) {
+  if (paths && text.trim().startsWith('$')) {
     const p = compilePattern(text.trim());
     if (!p) return { ...none, pathMode: true, error: 'Not a valid path' };
     const walk = (n: DNode) => {
@@ -97,7 +98,8 @@ export function search(root: DNode, q: Query): Found {
         const value = scalarText(x);
         return (key !== undefined && test(key)) || (value !== undefined && test(value));
       };
-      if (n.kids ? own(n.key, v) : inside(v, n.segs, (k, x, segs) => own(segs === n.segs ? n.key : k, x))) hits.push({ node: n, side: s });
+      const written = lineText?.(n, s);
+      if (written !== undefined ? test(written) : n.kids ? own(n.key, v) : inside(v, n.segs, (k, x, segs) => own(segs === n.segs ? n.key : k, x))) hits.push({ node: n, side: s });
     }
     n.kids?.forEach(walk);
   };

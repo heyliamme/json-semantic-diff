@@ -14,6 +14,7 @@ const builds = [
   { ...common, entryPoints: ['src/core/index.ts'], outfile: 'dist/core.js', platform: 'node', format: 'cjs', target: 'node18', sourcemap: false },
   { ...common, entryPoints: ['webview/render.ts'], outfile: 'dist/render.js', platform: 'node', format: 'cjs', target: 'node18', sourcemap: false },
   { ...common, entryPoints: ['webview/search.ts'], outfile: 'dist/search.js', platform: 'node', format: 'cjs', target: 'node18', sourcemap: false },
+  { ...common, entryPoints: ['webview/textrows.ts'], outfile: 'dist/textrows.js', platform: 'node', format: 'cjs', target: 'node18', sourcemap: false },
 ];
 
 const copyCss = () => {

@@ -161,7 +161,7 @@ export class DiffPanel {
       live: s.live,
       text: readable ? undefined : s.text.length <= 5_000_000 ? s.text : undefined,
     };
-    return { label: s.label, detail: s.detail, text: s.text, canReveal: !!s.uri, restore };
+    return { label: s.label, detail: s.detail, text: s.text, canReveal: !!s.uri, restore, json: isJsonSource(s) };
   }
 
   private post(m: ToWebview) {
@@ -213,7 +213,7 @@ export class DiffPanel {
       }
       case 'textDiff':
         try {
-          await this.openTextDiff(m.left, m.right, m.options);
+          await this.openTextDiff(m.left, m.right, m.options, m.raw);
         } catch (e) {
           vscode.window.showErrorMessage(`JSON Semantic Diff: couldn't open the text diff (${e instanceof Error ? e.message : String(e)}).`);
         }
@@ -260,9 +260,11 @@ export class DiffPanel {
     this.post({ type: 'side', side, data: this.data(src) });
   }
 
-  private async openTextDiff(left: string, right: string, options: ViewOptions | Parameters<typeof diff>[2]) {
+  private async openTextDiff(left: string, right: string, options: ViewOptions | Parameters<typeof diff>[2], raw = false) {
     const opts = { ignoreArrayOrder: !!options?.ignoreArrayOrder, nullEqualsMissing: !!options?.nullEqualsMissing };
     const canon = (text: string) => {
+      // Text mode: the texts as they are.
+      if (raw) return text;
       const res = parseLoose(text);
       if (!res.value) return undefined;
       return canonicalText(options?.parseNestedJson ? expandNested(res.value) : res.value, opts);
@@ -280,7 +282,7 @@ export class DiffPanel {
     texts.set(lu.toString(), l);
     texts.set(ru.toString(), r);
     this.shown.push(lu.toString(), ru.toString());
-    await vscode.commands.executeCommand('vscode.diff', lu, ru, `${this.title()} (normalized)`, { viewColumn: vscode.ViewColumn.Beside });
+    await vscode.commands.executeCommand('vscode.diff', lu, ru, `${this.title()}${raw ? '' : ' (normalized)'}`, { viewColumn: vscode.ViewColumn.Beside });
   }
 
   private html() {
@@ -316,6 +318,14 @@ export class DiffPanel {
 // ---------------------------------------------------------------------------------------
 
 const JSON_LANGS = new Set(['json', 'jsonc', 'json5', 'jsonl', 'snippets']);
+
+/** Whether a side is meant to be JSON: a JSON file. Pasted text and other files are not. */
+function isJsonSource(s: Source): boolean {
+  if (!s.uri) return false;
+  if (/\.(json[c5l]?|geojson|har|map|ipynb)$/i.test(s.uri.path)) return true;
+  const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === s.uri!.toString());
+  return !!doc && JSON_LANGS.has(doc.languageId);
+}
 
 export async function sourceFromUri(uri: vscode.Uri): Promise<Source> {
   const doc = await vscode.workspace.openTextDocument(uri);
@@ -359,9 +369,10 @@ export async function pickSource(title: string, exclude?: vscode.Uri): Promise<S
   const inTabs = new Set<string>();
   for (const g of vscode.window.tabGroups.all)
     for (const t of g.tabs) if (t.input instanceof vscode.TabInputText) inTabs.add(t.input.uri.toString());
-  const docs = vscode.workspace.textDocuments.filter(
-    (d) => inTabs.has(d.uri.toString()) && isJson(d) && !['output', 'vscode-userdata', CONTENT_SCHEME].includes(d.uri.scheme) && d.uri.toString() !== exclude?.toString(),
-  );
+  // Every open text file (plain text compares in text mode), JSON files first.
+  const docs = vscode.workspace.textDocuments
+    .filter((d) => inTabs.has(d.uri.toString()) && !['output', 'vscode-userdata', CONTENT_SCHEME].includes(d.uri.scheme) && d.uri.toString() !== exclude?.toString())
+    .sort((a, b) => Number(isJson(b)) - Number(isJson(a)));
   const name = (u: vscode.Uri) => u.path.split('/').pop()!;
   const where = (u: vscode.Uri) => {
     const rel = vscode.workspace.asRelativePath(u);
@@ -372,7 +383,7 @@ export async function pickSource(title: string, exclude?: vscode.Uri): Promise<S
   if (docs.length) items.push({ label: 'Open editors', kind: vscode.QuickPickItemKind.Separator });
   for (const d of docs)
     items.push({
-      label: `$(json) ${d.isUntitled ? d.uri.path : name(d.uri)}`,
+      label: `${isJson(d) ? '$(json)' : '$(file)'} ${d.isUntitled ? d.uri.path : name(d.uri)}`,
       description: d.isUntitled ? 'unsaved' : where(d.uri),
       run: () => sourceFromDocument(d),
     });

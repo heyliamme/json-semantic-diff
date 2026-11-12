@@ -1,6 +1,6 @@
 // Turns a diff tree into aligned rows: one row per printed line, with a blank cell on the
 // side that has no counterpart, so both columns always line up.
-import { mergeOrder, type Change, type DNode, type JV } from '../src/core';
+import { mergeOrder, wordDiff, type Change, type DNode, type JV, type Piece } from '../src/core';
 
 export type RowKind = 'eq' | 'chg' | 'add' | 'del' | 'ign' | 'in' | 'mv' | 'gap';
 
@@ -47,9 +47,9 @@ export interface RenderState {
 const under = (path: string, parent: string) => path === parent || path.startsWith(parent + '.') || path.startsWith(parent + '[');
 
 type Container = Extract<JV, { t: 'o' | 'a' }>;
-type Half = 'l' | 'r';
+export type Half = 'l' | 'r';
 /** One entry in the printed order of a container's children. */
-interface Tok {
+export interface Tok {
   kid: DNode;
   /** A moved item is printed twice: where it was (left only) and where it is (right only). */
   half?: Half;
@@ -277,9 +277,11 @@ export class Builder {
   /** A changed scalar with its differing part marked, or undefined. */
   private marked(n: DNode, side: Half, key: string, trailing: boolean): string | undefined {
     if (n.st !== 'chg' || !n.l || !n.r || isContainer(n.l) || isContainer(n.r)) return undefined;
-    let mark: 'all' | [number, number] = 'all';
-    if (n.l.t === 's' && n.r.t === 's') mark = strSpan(n.l.v, n.r.v)[side === 'l' ? 0 : 1];
-    return key + scalarHtml(n[side]!, mark) + comma(trailing);
+    if (n.l.t === 's' && n.r.t === 's') {
+      const pieces = wordDiff(n.l.v, n.r.v)[side === 'l' ? 0 : 1];
+      return key + `<span class="s">"${piecesHtml(pieces, (t) => JSON.stringify(t).slice(1, -1))}"</span>` + comma(trailing);
+    }
+    return key + scalarHtml(n[side]!, 'all') + comma(trailing);
   }
 
   /**
@@ -288,16 +290,7 @@ export class Builder {
    * each column still reads as its own document.
    */
   private order(n: DNode): Tok[] {
-    const kids = n.kids!;
-    if (!kids.some((k) => k.moved)) return kids.map((kid) => ({ kid }));
-    const both = new Map<DNode, Tok>();
-    for (const k of kids) if (k.l && k.r && !k.moved) both.set(k, { kid: k });
-    const seq = (side: Half) =>
-      kids
-        .filter((k) => k[side])
-        .sort((a, b) => (side === 'l' ? a.li! - b.li! : a.ri! - b.ri!))
-        .map((k) => both.get(k) ?? (k.l && k.r ? { kid: k, half: side } : { kid: k }));
-    return mergeOrder(seq('l'), seq('r'));
+    return printOrder(n);
   }
 
   /** One side of a moved item, with its own changes marked on that side. */
@@ -334,5 +327,28 @@ export function inPrintOrder(root: DNode, list: Change[]): Change[] {
   b.node(root, 0, false, false);
   const order = b.rows.filter((r) => r.ch !== undefined).map((r) => r.ch!);
   return order.length === list.length ? order.map((i) => list[i]) : list;
+}
+
+/**
+ * A container's children in printed order. Without moves that is the diff's own order.
+ * With moves, left-only entries follow the left document and right-only entries the
+ * right one, so each column still reads as its own document.
+ */
+export function printOrder(n: DNode): Tok[] {
+  const kids = n.kids!;
+  if (!kids.some((k) => k.moved)) return kids.map((kid) => ({ kid }));
+  const both = new Map<DNode, Tok>();
+  for (const k of kids) if (k.l && k.r && !k.moved) both.set(k, { kid: k });
+  const seq = (side: Half) =>
+    kids
+      .filter((k) => k[side])
+      .sort((a, b) => (side === 'l' ? a.li! - b.li! : a.ri! - b.ri!))
+      .map((k) => both.get(k) ?? (k.l && k.r ? { kid: k, half: side } : { kid: k }));
+  return mergeOrder(seq('l'), seq('r'));
+}
+
+/** Pieces of a compared string as HTML, changed ones marked; `show` escapes each piece's text for display. */
+export function piecesHtml(pieces: Piece[], show: (t: string) => string): string {
+  return pieces.map((p) => (p.changed ? `<mark>${esc(show(p.text))}</mark>` : esc(show(p.text)))).join('');
 }
 

@@ -12,6 +12,11 @@ export interface DiffOptions {
   arrayMatchKeys: string[];
   /** Paths whose differences are shown but not counted. */
   ignorePaths: string[];
+  /**
+   * The array is a text's lines: a line that was edited and also moved pairs with itself
+   * when the two share distinctive words. (Not a user setting; text mode sets it.)
+   */
+  textLines?: boolean;
 }
 
 export const DEFAULT_OPTIONS: DiffOptions = {
@@ -296,6 +301,69 @@ const MYERS_MAX_EDITS = 2000;
 const PAIR_WINDOW = 64;
 const PAIR_LIMIT = 250_000;
 const MIN_SIMILARITY = 0.3;
+/** Past this many unpaired lines a side, edited-and-moved lines aren't looked for. */
+const MOVED_LINES_LIMIT = 3000;
+
+const lineWords = new WeakMap<JV, Set<string>>();
+function wordsOf(v: JV): Set<string> {
+  let w = lineWords.get(v);
+  if (!w) {
+    // Numbers (status codes, timings, counts) say little about which line is which.
+    w = new Set(v.t === 's' ? (v.v.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []).filter((x) => x.length > 1 && !/^\d/.test(x)) : []);
+    lineWords.set(v, w);
+  }
+  return w;
+}
+
+/**
+ * Removed and added lines that are the same line edited: they share at least two
+ * distinctive words (ones found in few lines of the text, so not "the" or a domain name
+ * on every line) and most of their distinctive words. Best matches first.
+ */
+function movedLines(L: JV[], R: JV[], dels: number[], adds: number[], gapOf: (side: 'l' | 'r', i: number) => number | undefined): [number, number][] {
+  if (!dels.length || !adds.length || dels.length > MOVED_LINES_LIMIT || adds.length > MOVED_LINES_LIMIT) return [];
+  const df = new Map<string, number>();
+  for (const v of [...L, ...R]) for (const w of wordsOf(v)) df.set(w, (df.get(w) ?? 0) + 1);
+  const common = Math.max(2, Math.ceil((L.length + R.length) * 0.1));
+  const distinct = (v: JV) => [...wordsOf(v)].filter((w) => (df.get(w) ?? 0) <= common);
+  const index = new Map<string, number[]>();
+  const right = new Map<number, string[]>();
+  for (const ri of adds) {
+    const ws = distinct(R[ri]);
+    right.set(ri, ws);
+    for (const w of ws) (index.get(w) ?? index.set(w, []).get(w)!).push(ri);
+  }
+  // Each line's best score with a line in its own gap: a move must beat staying put.
+  const bestHere = new Map<string, number>();
+  const note = (key: string, score: number) => bestHere.set(key, Math.max(bestHere.get(key) ?? 0, score));
+  const cands: [number, number, number][] = [];
+  for (const li of dels) {
+    const lw = distinct(L[li]);
+    if (!lw.length) continue;
+    const shared = new Map<number, number>();
+    for (const w of lw) for (const ri of index.get(w) ?? []) shared.set(ri, (shared.get(ri) ?? 0) + 1);
+    for (const [ri, n] of shared) {
+      const score = (2 * n) / (lw.length + right.get(ri)!.length);
+      if (gapOf('l', li) === gapOf('r', ri)) {
+        note(`l${li}`, score);
+        note(`r${ri}`, score);
+      } else if (n >= 2 && score >= 0.6) cands.push([score, li, ri]);
+    }
+  }
+  cands.sort((x, y) => y[0] - x[0]);
+  const usedL = new Set<number>();
+  const usedR = new Set<number>();
+  const out: [number, number][] = [];
+  for (const [score, li, ri] of cands) {
+    if (usedL.has(li) || usedR.has(ri)) continue;
+    if (score < Math.max(bestHere.get(`l${li}`) ?? 0, bestHere.get(`r${ri}`) ?? 0) + 0.2) continue;
+    usedL.add(li);
+    usedR.add(ri);
+    out.push([li, ri]);
+  }
+  return out;
+}
+
 /** Stricter, for pairing items whose identity says they differ, or that sit far apart. */
 const RENAME_SIMILARITY = 0.55;
 
@@ -513,9 +581,24 @@ class Differ {
 
     const pairs: Pair[] = [...kept];
     for (const [li, ri] of movedTo) pairs.push({ li, ri, moved: true });
+    const gapOfL = new Map<number, number>();
+    const gapOfR = new Map<number, number>();
+    gaps.forEach((g, k) => {
+      for (const li of g.dels) if (!movedTo.has(li)) gapOfL.set(li, k);
+      for (const ri of g.adds) if (!takenRight.has(ri)) gapOfR.set(ri, k);
+    });
+    // Text: an edited line that also moved pairs with itself, not with whatever now sits
+    // where it used to be. Only lines sharing distinctive words, and only across gaps.
+    if (this.opts.textLines && gaps.length > 1)
+      for (const [li, ri] of movedLines(L, R, [...gapOfL.keys()], [...gapOfR.keys()], (side, i) => (side === 'l' ? gapOfL : gapOfR).get(i)))
+        if (gapOfL.get(li) !== gapOfR.get(ri)) {
+          pairs.push({ li, ri });
+          gapOfL.delete(li);
+          gapOfR.delete(ri);
+        }
     const singles: Pair[] = [];
     for (const g of gaps)
-      for (const p of this.pairUp(L, R, g.dels.filter((li) => !movedTo.has(li)), g.adds.filter((ri) => !takenRight.has(ri)), true))
+      for (const p of this.pairUp(L, R, g.dels.filter((li) => gapOfL.has(li)), g.adds.filter((ri) => gapOfR.has(ri)), true))
         (p.li !== undefined && p.ri !== undefined ? pairs : singles).push(p);
     // An item that moved to another gap and changed on the way.
     const far = this.pairUp(
@@ -527,11 +610,26 @@ class Differ {
       RENAME_SIMILARITY,
     );
     for (const p of far) pairs.push(p);
-    // Whatever keeps its relative order isn't moved; the rest is. (Also guards the case
-    // where the LCS was approximated and missed some in-order matches.)
-    const matched = pairs.filter((p) => p.li !== undefined && p.ri !== undefined).sort((a, b) => a.li! - b.li!);
-    for (const p of matched) p.moved = false;
-    this.markMoves(matched);
+    // The longest common run stays put. Any other pair that spans two different gaps
+    // moved; pairs inside one gap moved only if they cross each other.
+    const anchors = new Set(kept);
+    const gapL = new Map<number, number>();
+    const gapR = new Map<number, number>();
+    gaps.forEach((g, k) => {
+      for (const li of g.dels) gapL.set(li, k);
+      for (const ri of g.adds) gapR.set(ri, k);
+    });
+    const inGap = new Map<number, Pair[]>();
+    for (const p of pairs) {
+      if (anchors.has(p) || p.li === undefined || p.ri === undefined) continue;
+      const k = gapL.get(p.li);
+      if (k === undefined || k !== gapR.get(p.ri)) p.moved = true;
+      else {
+        p.moved = false;
+        (inGap.get(k) ?? inGap.set(k, []).get(k)!).push(p);
+      }
+    }
+    for (const group of inGap.values()) this.markMoves(group.sort((a, b) => a.li! - b.li!));
 
     const byLeft = new Map<number, Pair>();
     const byRight = new Map<number, Pair>();

@@ -281,7 +281,7 @@ describe('council round 1', () => {
   });
   it('pairs a renamed item and a moved, edited one', () => {
     assert.deepEqual(D('[{"name":"alice","age":30,"city":"x"},{"name":"bob","age":4,"city":"y"}]', '[{"name":"alicia","age":30,"city":"x"},{"name":"bob","age":4,"city":"y"}]'), ['chg $[name="alicia"].name']);
-    assert.deepEqual(D('[{"a":1,"v":1,"w":3},{"b":2}]', '[{"b":2},{"a":1,"v":9,"w":3}]', { arrayMatchKeys: [] }), ['chg $[1].v', 'moved $[0]']);
+    assert.deepEqual(D('[{"a":1,"v":1,"w":3},{"b":2}]', '[{"b":2},{"a":1,"v":9,"w":3}]', { arrayMatchKeys: [] }), ['moved $[1]', 'chg $[1].v']); // {"b":2} kept its place; the edited object moved
   });
   it('length-prefixed hashing: a string never equals a list of items', () => {
     assert.deepEqual(D('[["x,sy"],7]', '[7,["x","y"]]').filter((x) => x.startsWith('moved')), []);

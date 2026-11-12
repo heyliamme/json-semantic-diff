@@ -29,6 +29,13 @@ changed. This extension reads both documents and compares the values:
   keys in a shared order so they line up, and the line numbers are the file's own.
 - **JSON inside strings is compared as JSON.** `"payload": "{\"a\":1}"` from a log or a
   message queue is opened up and diffed property by property.
+- **Plain text too.** **Text** compares anything line by line: changed words are marked,
+  and a line that moved (even if it was also edited) is shown where it was and where it
+  went. Files that aren't JSON (release notes, `.env`, logs) open in Text by themselves;
+  a broken `.json` file shows its error, with **Compare as text** one click away.
+  **Ignore whitespace** treats lines that differ only in indentation or the number of
+  spaces as equal, and **Changes only** keeps two lines around each change. A missing
+  final line break isn't counted as a change.
 - **Paste whatever you have.** Comments, trailing commas, single quotes, unquoted keys,
   a JSON document escaped inside a string, JSON Lines, or a log line with the JSON in
   the middle. A note in the column head says how the input was read.
@@ -68,6 +75,9 @@ shortcut, search for `jsonSemanticDiff` in **Keyboard Shortcuts**.
 
 - **Step through changes** with the arrows, <kbd>F7</kbd> / <kbd>Shift</kbd>+<kbd>F7</kbd>,
   or <kbd>N</kbd> / <kbd>P</kbd>. **Changes** lists them all with their paths.
+- **Compare strings**: select a changed value or line longer than 40 characters (a URL,
+  a query, a message) and press **Compare strings** at the bottom of the view to see
+  both in full, one above the other, with only the differing words marked.
 - **Find** with <kbd>Ctrl</kbd>+<kbd>F</kbd> (<kbd>Cmd</kbd>+<kbd>F</kbd>): matches keys and values
   in both documents or just one (**Both / Left / Right**), with match case and regular
   expressions. It also finds what is folded or hidden by **Changes only**. Type a path
@@ -88,7 +98,7 @@ shortcut, search for `jsonSemanticDiff` in **Keyboard Shortcuts**.
   indentation, keeping key order), **Paste** to replace a side with
   the clipboard, **⇄** to swap sides.
 - **Text diff** opens both documents normalized (sorted keys, same layout) in VS Code's
-  own diff editor.
+  own diff editor; in Text mode, the texts as they are.
 - **Copy summary** puts the list of changes on the clipboard as Markdown, ready for a
   pull request or a ticket.
 

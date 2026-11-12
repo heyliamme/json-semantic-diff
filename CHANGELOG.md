@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+- Text mode: compare plain text line by line, with changed words marked, moved lines
+  (edited or not) shown where they were and where they went, "Ignore whitespace" and
+  "Changes only". Files that aren't JSON open in Text; a broken JSON file offers
+  "Compare as text".
+- Changed strings are marked word by word, down to the characters that differ in a
+  near-identical word, hash or token. "Compare strings" shows two long values in full.
+- A long array item that keeps its place is never reported as moved.
+- "Compare with…" lists every open file, JSON first.
+
 ## 0.3.0
 
 - Find (Ctrl+F / Cmd+F) in the comparison: keys and values, both documents or one,

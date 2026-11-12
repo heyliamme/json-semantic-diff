@@ -9,6 +9,8 @@ export interface SideData {
   text: string;
   /** Double-clicking a line can open the source at that line. */
   canReveal: boolean;
+  /** The source is a JSON file (by language or extension): a parse error there is shown, not switched to text. */
+  json?: boolean;
   /** What the host needs to reopen this side after a window reload. */
   restore: Restore;
 }
@@ -39,7 +41,7 @@ export type ToWebview =
 export type FromWebview =
   | { type: 'ready' }
   | { type: 'reveal'; side: Side; line: number; col: number }
-  | { type: 'textDiff'; left: string; right: string; options: DiffOptions }
+  | { type: 'textDiff'; left: string; right: string; options: DiffOptions; raw?: boolean }
   | { type: 'copy'; text: string; what: string }
   | { type: 'pick'; side: Side }
   | { type: 'paste'; side: Side }
